@@ -51,3 +51,148 @@
     @apply overflow-auto rounded-lg border border-zinc-800 bg-zinc-950 p-3 text-xs text-zinc-300;
   }
 }
+
+.graph-map {
+  height: 440px;
+}
+
+.graph-map--fullscreen {
+  height: 100%;
+}
+
+.graph-map-fullscreen:fullscreen {
+  width: 100vw;
+  height: 100vh;
+  box-sizing: border-box;
+}
+
+.graph-map-shell {
+  min-height: 0;
+}
+
+.filter-menu {
+  position: relative;
+}
+
+.filter-menu__summary {
+  display: flex;
+  min-height: 42px;
+  cursor: pointer;
+  list-style: none;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  border-radius: 0.5rem;
+  border: 1px solid rgb(63 63 70);
+  background: rgb(9 9 11);
+  padding: 0.625rem 0.75rem;
+  color: rgb(244 244 245);
+}
+
+.filter-menu__summary::-webkit-details-marker {
+  display: none;
+}
+
+.filter-menu__label {
+  color: rgb(161 161 170);
+  font-size: 0.875rem;
+}
+
+.filter-menu__value {
+  color: rgb(244 244 245);
+  font-size: 0.875rem;
+  font-weight: 600;
+}
+
+.filter-menu[open] .filter-menu__summary {
+  border-color: rgb(168 85 247 / 0.6);
+}
+
+.filter-menu__panel {
+  position: absolute;
+  z-index: 10;
+  margin-top: 0.5rem;
+  width: 100%;
+  min-width: 240px;
+  border-radius: 0.75rem;
+  border: 1px solid rgb(39 39 42);
+  background: rgb(9 9 11);
+  padding: 0.75rem;
+  box-shadow: 0 18px 40px rgb(0 0 0 / 0.35);
+}
+
+.filter-menu__actions {
+  display: flex;
+  gap: 0.5rem;
+  margin-bottom: 0.75rem;
+}
+
+.filter-menu__actions button {
+  flex: 1;
+}
+
+.filter-menu__options {
+  display: grid;
+  gap: 0.5rem;
+  max-height: 220px;
+  overflow: auto;
+}
+
+.filter-menu__option {
+  display: flex;
+  align-items: center;
+  gap: 0.625rem;
+  border-radius: 0.5rem;
+  padding: 0.375rem 0.25rem;
+  color: rgb(228 228 231);
+  cursor: pointer;
+}
+
+.filter-menu__option:hover {
+  background: rgb(24 24 27);
+}
+
+.filter-menu__option input {
+  width: 1rem;
+  height: 1rem;
+  flex: none;
+}
+
+.filter-menu__empty {
+  margin: 0;
+  color: rgb(161 161 170);
+  font-size: 0.875rem;
+}
+
+.graph-search {
+  position: relative;
+}
+
+.graph-search__results {
+  position: absolute;
+  z-index: 10;
+  margin-top: 0.5rem;
+  width: 100%;
+  max-height: 320px;
+  overflow: auto;
+  border-radius: 0.75rem;
+  border: 1px solid rgb(39 39 42);
+  background: rgb(9 9 11);
+  padding: 0.5rem;
+  box-shadow: 0 18px 40px rgb(0 0 0 / 0.35);
+}
+
+.graph-search__results .item {
+  margin-bottom: 0.375rem;
+}
+
+.graph-search__results .item:last-child {
+  margin-bottom: 0;
+}
+
+.graph-search__empty {
+  margin: 0;
+  padding: 0.5rem;
+  color: rgb(161 161 170);
+  font-size: 0.875rem;
+}

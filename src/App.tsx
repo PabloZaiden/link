@@ -60,6 +60,14 @@ interface PendingSelection {
   edgeId: string;
 }
 
+interface TypeFilterControlProps {
+  label: string;
+  allLabel: string;
+  options: Array<{ id: string; name: string }>;
+  selectedIds: string[];
+  onChange: (ids: string[]) => void;
+}
+
 const emptyGraph: GraphSnapshot = { version: 0, nodeTypes: [], edgeTypes: [], nodes: [], edges: [] };
 
 async function api<T>(path: string, init?: RequestInit): Promise<T> {
@@ -157,6 +165,62 @@ function stableStringify(value: unknown): string {
   return JSON.stringify(value);
 }
 
+function TypeFilterControl(props: TypeFilterControlProps) {
+  const selectedOptions = props.options.filter(option => props.selectedIds.includes(option.id));
+  const summary =
+    selectedOptions.length === 0
+      ? props.allLabel
+      : selectedOptions.length === 1
+        ? selectedOptions[0]?.name ?? props.allLabel
+        : `${selectedOptions.length} selected`;
+
+  const toggleOption = (optionId: string) => {
+    const nextSelection = props.selectedIds.includes(optionId)
+      ? props.selectedIds.filter(currentId => currentId !== optionId)
+      : [...props.selectedIds, optionId];
+
+    props.onChange(nextSelection);
+  };
+
+  return (
+    <details className="filter-menu group">
+      <summary className="filter-menu__summary">
+        <span className="filter-menu__label">{props.label}</span>
+        <span className="filter-menu__value">{summary}</span>
+      </summary>
+      <div className="filter-menu__panel">
+        <div className="filter-menu__actions">
+          <button type="button" onClick={() => props.onChange([])} disabled={props.selectedIds.length === 0}>
+            All
+          </button>
+          <button
+            type="button"
+            onClick={() => props.onChange(props.options.map(option => option.id))}
+            disabled={props.options.length === 0 || props.selectedIds.length === props.options.length}
+          >
+            Select all
+          </button>
+        </div>
+        {props.options.length === 0 ? (
+          <p className="filter-menu__empty">No types available yet.</p>
+        ) : (
+          <div className="filter-menu__options">
+            {props.options.map(option => {
+              const checked = props.selectedIds.includes(option.id);
+              return (
+                <label key={option.id} className="filter-menu__option">
+                  <input type="checkbox" checked={checked} onChange={() => toggleOption(option.id)} />
+                  <span>{option.name}</span>
+                </label>
+              );
+            })}
+          </div>
+        )}
+      </div>
+    </details>
+  );
+}
+
 export function App() {
   const [graph, setGraph] = useState<GraphSnapshot>(emptyGraph);
   const [createNodeFormVersion, setCreateNodeFormVersion] = useState(0);
@@ -169,8 +233,8 @@ export function App() {
   const [error, setError] = useState("");
   const [exportText, setExportText] = useState("");
   const [selectedEdgeId, setSelectedEdgeId] = useState("");
-  const [nodeTypeFilter, setNodeTypeFilter] = useState("");
-  const [edgeTypeFilter, setEdgeTypeFilter] = useState("");
+  const [nodeTypeFilterIds, setNodeTypeFilterIds] = useState<string[]>([]);
+  const [edgeTypeFilterIds, setEdgeTypeFilterIds] = useState<string[]>([]);
   const [selectedNodeTypeId, setSelectedNodeTypeId] = useState("");
   const [selectedEdgeTypeId, setSelectedEdgeTypeId] = useState("");
   const [history, setHistory] = useState<GraphChange[]>([]);
@@ -179,36 +243,25 @@ export function App() {
   const nodeFormRef = useRef<HTMLFormElement | null>(null);
   const edgeFormRefs = useRef<Record<string, HTMLFormElement | null>>({});
 
-  const selectedNode = graph.nodes.find(node => node.id === selectedNodeId) ?? graph.nodes[0] ?? null;
+  const selectedNode = graph.nodes.find(node => node.id === selectedNodeId) ?? null;
   const selectedEdge = selectedEdgeId
     ? graph.edges.find(edge => edge.id === selectedEdgeId) ?? context?.edges.find(edge => edge.id === selectedEdgeId) ?? null
     : null;
   const selectedNodeType = graph.nodeTypes.find(type => type.id === selectedNodeTypeId) ?? graph.nodeTypes[0] ?? null;
   const selectedEdgeType = graph.edgeTypes.find(type => type.id === selectedEdgeTypeId) ?? graph.edgeTypes[0] ?? null;
-  const graphNodes = useMemo(() => {
-    return graph.nodes.filter(node => !nodeTypeFilter || node.typeId === nodeTypeFilter);
-  }, [graph.nodes, nodeTypeFilter]);
-  const filteredNodes = useMemo(() => {
+  const nodeSearchMatches = useMemo(() => {
     const needle = search.toLowerCase().trim();
     if (!needle) {
-      return [];
+      return [] as GraphNode[];
     }
 
-    return graphNodes.filter(node => JSON.stringify(node).toLowerCase().includes(needle));
-  }, [graphNodes, search]);
-  const filteredEdges = useMemo(() => {
-    const visibleNodeIds = new Set(graphNodes.map(node => node.id));
-    return graph.edges.filter(
-      edge =>
-        (!edgeTypeFilter || edge.typeId === edgeTypeFilter) && visibleNodeIds.has(edge.sourceNodeId) && visibleNodeIds.has(edge.targetNodeId),
-    );
-  }, [edgeTypeFilter, graph.edges, graphNodes]);
+    return graph.nodes.filter(node => JSON.stringify(node).toLowerCase().includes(needle)).slice(0, 12);
+  }, [graph.nodes, search]);
 
   const refresh = async () => {
     const nextGraph = await api<GraphSnapshot>("/api/graph");
     setGraph(nextGraph);
     setMessage(`Graph loaded at version ${nextGraph.version}.`);
-    if (!selectedNodeId && nextGraph.nodes[0]) setSelectedNodeId(nextGraph.nodes[0].id);
   };
 
   useEffect(() => {
@@ -246,7 +299,18 @@ export function App() {
     if (selectedEdgeId && !graph.edges.some(edge => edge.id === selectedEdgeId)) {
       setSelectedEdgeId("");
     }
-  }, [graph.edgeTypes, graph.edges, graph.nodeTypes, selectedEdgeId, selectedEdgeTypeId, selectedNodeTypeId]);
+    if (selectedNodeId && !graph.nodes.some(node => node.id === selectedNodeId)) {
+      setSelectedNodeId("");
+    }
+  }, [graph.edgeTypes, graph.edges, graph.nodeTypes, graph.nodes, selectedEdgeId, selectedEdgeTypeId, selectedNodeId, selectedNodeTypeId]);
+
+  useEffect(() => {
+    const validNodeTypeIds = new Set(graph.nodeTypes.map(type => type.id));
+    const validEdgeTypeIds = new Set(graph.edgeTypes.map(type => type.id));
+
+    setNodeTypeFilterIds(current => current.filter(typeId => validNodeTypeIds.has(typeId)));
+    setEdgeTypeFilterIds(current => current.filter(typeId => validEdgeTypeIds.has(typeId)));
+  }, [graph.edgeTypes, graph.nodeTypes]);
 
   useEffect(() => {
     if (!selectedEdge) {
@@ -663,55 +727,63 @@ export function App() {
         </Panel>
 
         <Panel title="Graph map">
-          <div className="mb-3 grid gap-3 md:grid-cols-2">
-            <select value={nodeTypeFilter} onChange={event => setNodeTypeFilter(event.target.value)}>
-              <option value="">All node types</option>
-              {graph.nodeTypes.map(type => (
-                <option key={type.id} value={type.id}>
-                  {type.name}
-                </option>
-              ))}
-            </select>
-            <select value={edgeTypeFilter} onChange={event => setEdgeTypeFilter(event.target.value)}>
-              <option value="">All edge types</option>
-              {graph.edgeTypes.map(type => (
-                <option key={type.id} value={type.id}>
-                  {type.name}
-                </option>
-              ))}
-            </select>
-          </div>
           <GraphMap
-            graph={{ ...graph, nodes: graphNodes, edges: filteredEdges }}
+            graph={graph}
             selectedNodeId={selectedNode?.id ?? ""}
+            selectedNodeTypeFilterIds={nodeTypeFilterIds}
+            selectedEdgeTypeFilterIds={edgeTypeFilterIds}
             onSelectNode={id => {
               maybeRequestSelection({ nodeId: id, edgeId: "" });
             }}
+            onClearSelection={() => {
+              maybeRequestSelection({ nodeId: "", edgeId: "" });
+            }}
+            controls={
+              <div className="grid gap-3 lg:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)_minmax(0,1fr)]">
+                <div className="graph-search">
+                  <input value={search} onChange={event => setSearch(event.target.value)} placeholder="Search nodes..." />
+                  {search.trim() && (
+                    <div className="graph-search__results">
+                      {nodeSearchMatches.length === 0 ? (
+                        <p className="graph-search__empty">No matching nodes.</p>
+                      ) : (
+                        nodeSearchMatches.map(node => (
+                          <button
+                            type="button"
+                            key={node.id}
+                            className={node.id === selectedNode?.id ? "item selected" : "item"}
+                            onClick={() => {
+                              maybeRequestSelection({ nodeId: node.id, edgeId: "" });
+                              setSearch("");
+                            }}
+                          >
+                            <span>
+                              <strong>{node.name}</strong>
+                              <small>{node.typeId}</small>
+                            </span>
+                          </button>
+                        ))
+                      )}
+                    </div>
+                  )}
+                </div>
+                <TypeFilterControl
+                  label="Node types"
+                  allLabel="All node types"
+                  options={graph.nodeTypes}
+                  selectedIds={nodeTypeFilterIds}
+                  onChange={setNodeTypeFilterIds}
+                />
+                <TypeFilterControl
+                  label="Edge types"
+                  allLabel="All edge types"
+                  options={graph.edgeTypes}
+                  selectedIds={edgeTypeFilterIds}
+                  onChange={setEdgeTypeFilterIds}
+                />
+              </div>
+            }
           />
-        </Panel>
-
-        <Panel title="Nodes">
-          <input value={search} onChange={event => setSearch(event.target.value)} placeholder="Search nodes..." />
-          <div className="mt-3 grid gap-2">
-            {!search.trim() ? (
-              <p className="text-sm text-zinc-400">Enter a search term to list matching nodes.</p>
-            ) : filteredNodes.length === 0 ? (
-              <p className="text-sm text-zinc-400">No nodes match the current search.</p>
-            ) : (
-              filteredNodes.map(node => (
-                <button
-                  className={node.id === selectedNode?.id ? "selected item" : "item"}
-                  key={node.id}
-                  onClick={() => maybeRequestSelection({ nodeId: node.id, edgeId: "" })}
-                >
-                  <span>
-                    <strong>{node.name}</strong>
-                    <small>{node.typeId}</small>
-                  </span>
-                </button>
-              ))
-            )}
-          </div>
         </Panel>
 
         <div>
@@ -1162,13 +1234,19 @@ function colorForTypeName(typeName: string): string {
 function GraphMap(props: {
   graph: GraphSnapshot;
   selectedNodeId: string;
+  selectedNodeTypeFilterIds: string[];
+  selectedEdgeTypeFilterIds: string[];
   onSelectNode: (id: string) => void;
+  onClearSelection: () => void;
+  controls: React.ReactNode;
 }) {
   const selectedNodeFill = "#f59e0b";
   const selectedNodeStroke = "#fde68a";
   const [scale, setScale] = useState(1);
   const [offset, setOffset] = useState({ x: 0, y: 0 });
+  const [isFullscreen, setIsFullscreen] = useState(false);
   const dragStateRef = useRef<{ startX: number; startY: number; lastX: number; lastY: number; hasDragged: boolean } | null>(null);
+  const graphViewportRef = useRef<HTMLDivElement | null>(null);
   const nodeTypeNames = new Map(props.graph.nodeTypes.map(nodeType => [nodeType.id, nodeType.name]));
   const edgeTypeNames = new Map(props.graph.edgeTypes.map(edgeType => [edgeType.id, edgeType.name]));
   const layout = useMemo(
@@ -1183,6 +1261,37 @@ function GraphMap(props: {
   const viewBox = `${layout.bounds.minX} ${layout.bounds.minY} ${layout.bounds.width} ${layout.bounds.height}`;
   const showNodeLabels = props.graph.nodes.length <= 90 || scale >= 1.2;
   const showEdgeLabels = props.graph.edges.length <= 60 || scale >= 1.4;
+  const directlyConnectedNodeIds = useMemo(() => {
+    if (!props.selectedNodeId) {
+      return new Set<string>();
+    }
+
+    const connectedNodeIds = new Set<string>([props.selectedNodeId]);
+    for (const edge of props.graph.edges) {
+      if (edge.sourceNodeId === props.selectedNodeId) {
+        connectedNodeIds.add(edge.targetNodeId);
+      }
+      if (edge.targetNodeId === props.selectedNodeId) {
+        connectedNodeIds.add(edge.sourceNodeId);
+      }
+    }
+
+    return connectedNodeIds;
+  }, [props.graph.edges, props.selectedNodeId]);
+
+  const focusEdgeIds = useMemo(() => {
+    if (!props.selectedNodeId) {
+      return new Set<string>();
+    }
+
+    return new Set(
+      props.graph.edges
+        .filter(edge => edge.sourceNodeId === props.selectedNodeId || edge.targetNodeId === props.selectedNodeId)
+        .map(edge => edge.id),
+    );
+  }, [props.graph.edges, props.selectedNodeId]);
+  const activeNodeTypeFilterIds = useMemo(() => new Set(props.selectedNodeTypeFilterIds), [props.selectedNodeTypeFilterIds]);
+  const activeEdgeTypeFilterIds = useMemo(() => new Set(props.selectedEdgeTypeFilterIds), [props.selectedEdgeTypeFilterIds]);
 
   const clampScale = (nextScale: number) => Math.min(3, Math.max(0.5, nextScale));
 
@@ -1192,6 +1301,35 @@ function GraphMap(props: {
 
   const zoomOut = () => {
     setScale(current => clampScale(current * 0.9));
+  };
+
+  useEffect(() => {
+    const handleFullscreenChange = () => {
+      setIsFullscreen(document.fullscreenElement === graphViewportRef.current);
+    };
+
+    document.addEventListener("fullscreenchange", handleFullscreenChange);
+    handleFullscreenChange();
+
+    return () => document.removeEventListener("fullscreenchange", handleFullscreenChange);
+  }, []);
+
+  const toggleFullscreen = async () => {
+    const viewport = graphViewportRef.current;
+    if (!viewport) {
+      return;
+    }
+
+    try {
+      if (document.fullscreenElement === viewport) {
+        await document.exitFullscreen();
+        return;
+      }
+
+      await viewport.requestFullscreen();
+    } catch {
+      return;
+    }
   };
 
   const handlePointerDown = (event: React.PointerEvent<SVGSVGElement>) => {
@@ -1245,6 +1383,10 @@ function GraphMap(props: {
     }
 
     event.currentTarget.releasePointerCapture(event.pointerId);
+
+    if (!dragState.hasDragged && event.target === event.currentTarget && props.selectedNodeId) {
+      props.onClearSelection();
+    }
   };
 
   const handleResetViewport = () => {
@@ -1253,17 +1395,32 @@ function GraphMap(props: {
   };
 
   return (
-    <div className="space-y-3">
+    <div
+      ref={graphViewportRef}
+      className={isFullscreen ? "graph-map-fullscreen flex h-full flex-col gap-3 bg-zinc-950 p-4" : "space-y-3"}
+    >
+      {props.controls}
       <div className="flex flex-wrap items-center justify-between gap-3 text-sm text-zinc-300">
         <p>Drag to pan. Reset returns to the fitted graph view.</p>
-        <button type="button" onClick={handleResetViewport}>
-          Reset view
-        </button>
+        <div className="flex flex-wrap items-center gap-2">
+          <button type="button" onClick={handleResetViewport}>
+            Reset view
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              void toggleFullscreen();
+            }}
+            aria-pressed={isFullscreen}
+          >
+            {isFullscreen ? "Exit full screen" : "Full screen"}
+          </button>
+        </div>
       </div>
-      <div className="relative">
+      <div className={isFullscreen ? "graph-map-shell relative flex-1" : "relative"}>
         <svg
           viewBox={viewBox}
-          className="h-[440px] w-full overflow-hidden rounded-xl border border-zinc-800 bg-zinc-950"
+          className={isFullscreen ? "graph-map graph-map--fullscreen w-full overflow-hidden rounded-xl border border-zinc-800 bg-zinc-950" : "graph-map w-full overflow-hidden rounded-xl border border-zinc-800 bg-zinc-950"}
           onPointerDown={handlePointerDown}
           onPointerMove={handlePointerMove}
           onPointerUp={handlePointerUp}
@@ -1277,11 +1434,14 @@ function GraphMap(props: {
               if (!source || !target) return null;
               const label = edgeTypeNames.get(edge.typeId) ?? edge.typeId;
               const edgeColor = colorForTypeName(label);
+              const dimmedBySelection = props.selectedNodeId !== "" && !focusEdgeIds.has(edge.id);
+              const dimmedByType = activeEdgeTypeFilterIds.size > 0 && !activeEdgeTypeFilterIds.has(edge.typeId);
+              const edgeDimmed = dimmedBySelection || dimmedByType;
               const midX = (source.x + target.x) / 2;
               const midY = (source.y + target.y) / 2;
               const labelWidth = Math.min(label.length * 7 + 16, 180);
               return (
-                <g key={edge.id}>
+                <g key={edge.id} opacity={edgeDimmed ? 0.2 : 1}>
                   <line
                     x1={source.x}
                     y1={source.y}
@@ -1326,12 +1486,15 @@ function GraphMap(props: {
               const position = positions.get(node.id);
               if (!position) return null;
               const selected = node.id === props.selectedNodeId;
+              const dimmedBySelection = props.selectedNodeId !== "" && !directlyConnectedNodeIds.has(node.id);
+              const dimmedByType = activeNodeTypeFilterIds.size > 0 && !activeNodeTypeFilterIds.has(node.typeId);
+              const nodeDimmed = dimmedBySelection || dimmedByType;
               const nodeTypeName = nodeTypeNames.get(node.typeId) ?? node.typeId;
               const nodeColor = colorForTypeName(nodeTypeName);
               const label = node.name.slice(0, 18);
               const labelWidth = Math.min(label.length * 7 + 12, 140);
               return (
-                <g key={node.id} className="cursor-pointer">
+                <g key={node.id} className="cursor-pointer" opacity={nodeDimmed ? 0.2 : 1}>
                   <circle cx={position.x} cy={position.y} r={30} fill="transparent" pointerEvents="all" onClick={() => props.onSelectNode(node.id)} />
                   <circle
                     cx={position.x}
