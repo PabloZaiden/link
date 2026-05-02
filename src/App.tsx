@@ -1231,6 +1231,10 @@ function colorForTypeName(typeName: string): string {
   return typeColorPalette[(hash >>> 0) % typeColorPalette.length];
 }
 
+function graphNodeRadius(connectionCount: number): number {
+  return Math.min(84, 8 + Math.pow(connectionCount, 1.18) * 5.2);
+}
+
 function GraphMap(props: {
   graph: GraphSnapshot;
   selectedNodeId: string;
@@ -1248,19 +1252,30 @@ function GraphMap(props: {
   const [isFullscreen, setIsFullscreen] = useState(false);
   const dragStateRef = useRef<{ startX: number; startY: number; lastX: number; lastY: number; hasDragged: boolean } | null>(null);
   const graphViewportRef = useRef<HTMLDivElement | null>(null);
+  const svgRef = useRef<SVGSVGElement | null>(null);
   const scaleRef = useRef(scale);
   const offsetRef = useRef(offset);
   const clearSelectionTimeoutRef = useRef<number | null>(null);
   const nodeTypeNames = new Map(props.graph.nodeTypes.map(nodeType => [nodeType.id, nodeType.name]));
   const edgeTypeNames = new Map(props.graph.edgeTypes.map(edgeType => [edgeType.id, edgeType.name]));
+  const nodeConnectionCounts = useMemo(() => {
+    const counts = new Map<string, number>(props.graph.nodes.map(node => [node.id, 0]));
+
+    for (const edge of props.graph.edges) {
+      counts.set(edge.sourceNodeId, (counts.get(edge.sourceNodeId) ?? 0) + 1);
+      counts.set(edge.targetNodeId, (counts.get(edge.targetNodeId) ?? 0) + 1);
+    }
+
+    return counts;
+  }, [props.graph.edges, props.graph.nodes]);
   const layout = useMemo(
     () =>
       layoutGraph(
-        props.graph.nodes.map(node => ({ id: node.id })),
+        props.graph.nodes.map(node => ({ id: node.id, radius: graphNodeRadius(nodeConnectionCounts.get(node.id) ?? 0) })),
         props.graph.edges.map(edge => ({ sourceNodeId: edge.sourceNodeId, targetNodeId: edge.targetNodeId })),
         { spacingMultiplier: layoutSpacing },
       ),
-    [layoutSpacing, props.graph.edges, props.graph.nodes],
+    [layoutSpacing, nodeConnectionCounts, props.graph.edges, props.graph.nodes],
   );
   const positions = layout.positions;
   const viewBox = `${layout.bounds.minX} ${layout.bounds.minY} ${layout.bounds.width} ${layout.bounds.height}`;
@@ -1300,6 +1315,17 @@ function GraphMap(props: {
 
   const clampScale = (nextScale: number) => Math.min(12, Math.max(0.25, nextScale));
 
+  const getSvgPointFromClient = (clientX: number, clientY: number) => {
+    const svg = svgRef.current;
+    const ctm = svg?.getScreenCTM();
+    if (!svg || !ctm) {
+      return null;
+    }
+
+    const point = new DOMPoint(clientX, clientY).matrixTransform(ctm.inverse());
+    return { x: point.x, y: point.y };
+  };
+
   const setCenteredScale = (nextScale: number, viewportPoint?: { clientX: number; clientY: number }) => {
     const clampedScale = clampScale(nextScale);
     const currentScale = scaleRef.current;
@@ -1308,14 +1334,14 @@ function GraphMap(props: {
       return;
     }
 
-    const svgBounds = graphViewportRef.current?.querySelector("svg")?.getBoundingClientRect() ?? null;
+    const svgPoint = viewportPoint ? getSvgPointFromClient(viewportPoint.clientX, viewportPoint.clientY) : null;
     const graphPointX =
-      viewportPoint && svgBounds
-        ? layout.bounds.minX + ((viewportPoint.clientX - svgBounds.left) / svgBounds.width) * layout.bounds.width
+      svgPoint
+        ? svgPoint.x
         : layout.bounds.minX + layout.bounds.width / 2;
     const graphPointY =
-      viewportPoint && svgBounds
-        ? layout.bounds.minY + ((viewportPoint.clientY - svgBounds.top) / svgBounds.height) * layout.bounds.height
+      svgPoint
+        ? svgPoint.y
         : layout.bounds.minY + layout.bounds.height / 2;
     const currentVisibleCenterX = graphPointX / currentScale - currentOffset.x;
     const currentVisibleCenterY = graphPointY / currentScale - currentOffset.y;
@@ -1503,6 +1529,7 @@ function GraphMap(props: {
       </div>
       <div className={isFullscreen ? "graph-map-shell relative flex-1" : "relative"}>
         <svg
+          ref={svgRef}
           viewBox={viewBox}
           className={isFullscreen ? "graph-map graph-map--fullscreen w-full overflow-hidden rounded-xl border border-zinc-800 bg-zinc-950" : "graph-map w-full overflow-hidden rounded-xl border border-zinc-800 bg-zinc-950"}
           onPointerDown={handlePointerDown}
@@ -1578,13 +1605,18 @@ function GraphMap(props: {
               const nodeColor = colorForTypeName(nodeTypeName);
               const label = node.name.slice(0, 18);
               const labelWidth = Math.min(label.length * 7 + 12, 140);
+              const connectionCount = nodeConnectionCounts.get(node.id) ?? 0;
+              const nodeRadius = graphNodeRadius(connectionCount);
+              const visibleRadius = selected ? nodeRadius + 4 : nodeRadius;
+              const hitRadius = visibleRadius + 10;
+              const labelTop = position.y + visibleRadius + 6;
               return (
                 <g key={node.id} className="cursor-pointer" opacity={nodeDimmed ? 0.2 : 1}>
-                  <circle cx={position.x} cy={position.y} r={30} fill="transparent" pointerEvents="all" onClick={() => props.onSelectNode(node.id)} />
+                  <circle cx={position.x} cy={position.y} r={hitRadius} fill="transparent" pointerEvents="all" onClick={() => props.onSelectNode(node.id)} />
                   <circle
                     cx={position.x}
                     cy={position.y}
-                    r={selected ? 25 : 20}
+                    r={visibleRadius}
                     fill={selected ? selectedNodeFill : nodeColor}
                     stroke={selected ? selectedNodeStroke : "rgba(244, 244, 245, 0.2)"}
                     strokeWidth={selected ? 3 : 1.5}
@@ -1594,7 +1626,7 @@ function GraphMap(props: {
                     <>
                       <rect
                         x={position.x - labelWidth / 2}
-                        y={position.y + 24}
+                        y={labelTop}
                         width={labelWidth}
                         height={20}
                         fill="rgba(9, 9, 11, 0.78)"
@@ -1602,7 +1634,7 @@ function GraphMap(props: {
                         pointerEvents="all"
                         onClick={() => props.onSelectNode(node.id)}
                       />
-                      <text x={position.x} y={position.y + 36} textAnchor="middle" fill="#e4e4e7" fontSize="11" pointerEvents="none">
+                      <text x={position.x} y={labelTop + 12} textAnchor="middle" fill="#e4e4e7" fontSize="11" pointerEvents="none">
                         {label}
                       </text>
                     </>
