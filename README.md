@@ -11,7 +11,7 @@ Link is a Bun + React graph tracker for flexible work-related entities and relat
 - Optimistic concurrency through required `expectedVersion` values on mutations.
 - Tombstone deletes and append-only history.
 - Full graph seed, import, and export workflows.
-- Web UI for graph creation, search, context inspection, import/export, and SVG graph navigation.
+- Web UI for graph creation, search, context inspection, import/export, and structure-aware SVG graph navigation.
 - Realtime refresh through `/api/realtime`.
 - Local no-auth actor mode with future auth boundary.
 - SQLite persistence through `bun:sqlite`.
