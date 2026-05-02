@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import "./index.css";
+import { layoutGraph } from "./graph/layout";
 
 type Metadata = Record<string, unknown>;
 type MetadataEntry = { id: string; key: string; value: string };
@@ -196,8 +197,12 @@ export function App() {
     return graphNodes.filter(node => JSON.stringify(node).toLowerCase().includes(needle));
   }, [graphNodes, search]);
   const filteredEdges = useMemo(() => {
-    return graph.edges.filter(edge => !edgeTypeFilter || edge.typeId === edgeTypeFilter);
-  }, [edgeTypeFilter, graph.edges]);
+    const visibleNodeIds = new Set(graphNodes.map(node => node.id));
+    return graph.edges.filter(
+      edge =>
+        (!edgeTypeFilter || edge.typeId === edgeTypeFilter) && visibleNodeIds.has(edge.sourceNodeId) && visibleNodeIds.has(edge.targetNodeId),
+    );
+  }, [edgeTypeFilter, graph.edges, graphNodes]);
 
   const refresh = async () => {
     const nextGraph = await api<GraphSnapshot>("/api/graph");
@@ -1159,8 +1164,6 @@ function GraphMap(props: {
   selectedNodeId: string;
   onSelectNode: (id: string) => void;
 }) {
-  const radius = 170;
-  const center = 220;
   const selectedNodeFill = "#f59e0b";
   const selectedNodeStroke = "#fde68a";
   const [scale, setScale] = useState(1);
@@ -1168,12 +1171,18 @@ function GraphMap(props: {
   const dragStateRef = useRef<{ startX: number; startY: number; lastX: number; lastY: number; hasDragged: boolean } | null>(null);
   const nodeTypeNames = new Map(props.graph.nodeTypes.map(nodeType => [nodeType.id, nodeType.name]));
   const edgeTypeNames = new Map(props.graph.edgeTypes.map(edgeType => [edgeType.id, edgeType.name]));
-  const positions = new Map(
-    props.graph.nodes.map((node, index) => {
-      const angle = (Math.PI * 2 * index) / Math.max(props.graph.nodes.length, 1);
-      return [node.id, { x: center + Math.cos(angle) * radius, y: center + Math.sin(angle) * radius }];
-    }),
+  const layout = useMemo(
+    () =>
+      layoutGraph(
+        props.graph.nodes.map(node => ({ id: node.id })),
+        props.graph.edges.map(edge => ({ sourceNodeId: edge.sourceNodeId, targetNodeId: edge.targetNodeId })),
+      ),
+    [props.graph.edges, props.graph.nodes],
   );
+  const positions = layout.positions;
+  const viewBox = `${layout.bounds.minX} ${layout.bounds.minY} ${layout.bounds.width} ${layout.bounds.height}`;
+  const showNodeLabels = props.graph.nodes.length <= 90 || scale >= 1.2;
+  const showEdgeLabels = props.graph.edges.length <= 60 || scale >= 1.4;
 
   const clampScale = (nextScale: number) => Math.min(3, Math.max(0.5, nextScale));
 
@@ -1217,7 +1226,14 @@ function GraphMap(props: {
     };
 
     if (hasDragged && (deltaX !== 0 || deltaY !== 0)) {
-      setOffset(current => ({ x: current.x + deltaX, y: current.y + deltaY }));
+      const svgBounds = event.currentTarget.getBoundingClientRect();
+      const graphUnitsPerClientPixelX = layout.bounds.width / svgBounds.width / scale;
+      const graphUnitsPerClientPixelY = layout.bounds.height / svgBounds.height / scale;
+
+      setOffset(current => ({
+        x: current.x + deltaX * graphUnitsPerClientPixelX,
+        y: current.y + deltaY * graphUnitsPerClientPixelY,
+      }));
     }
   };
 
@@ -1239,14 +1255,14 @@ function GraphMap(props: {
   return (
     <div className="space-y-3">
       <div className="flex flex-wrap items-center justify-between gap-3 text-sm text-zinc-300">
-        <p>Drag to pan.</p>
+        <p>Drag to pan. Reset returns to the fitted graph view.</p>
         <button type="button" onClick={handleResetViewport}>
           Reset view
         </button>
       </div>
       <div className="relative">
         <svg
-          viewBox="0 0 440 440"
+          viewBox={viewBox}
           className="h-[440px] w-full overflow-hidden rounded-xl border border-zinc-800 bg-zinc-950"
           onPointerDown={handlePointerDown}
           onPointerMove={handlePointerMove}
@@ -1286,19 +1302,23 @@ function GraphMap(props: {
                     opacity="0.78"
                     pointerEvents="none"
                   />
-                  <rect
-                    x={midX - labelWidth / 2}
-                    y={midY - 18}
-                    width={labelWidth}
-                    height={18}
-                    rx="4"
-                    fill={edgeColor}
-                    opacity="0.2"
-                    pointerEvents="none"
-                  />
-                  <text x={midX} y={midY - 6} textAnchor="middle" fill="#e4e4e7" fontSize="10" pointerEvents="none">
-                    {label}
-                  </text>
+                  {showEdgeLabels && (
+                    <>
+                      <rect
+                        x={midX - labelWidth / 2}
+                        y={midY - 18}
+                        width={labelWidth}
+                        height={18}
+                        rx="4"
+                        fill={edgeColor}
+                        opacity="0.2"
+                        pointerEvents="none"
+                      />
+                      <text x={midX} y={midY - 6} textAnchor="middle" fill="#e4e4e7" fontSize="10" pointerEvents="none">
+                        {label}
+                      </text>
+                    </>
+                  )}
                 </g>
               );
             })}
@@ -1322,19 +1342,23 @@ function GraphMap(props: {
                     strokeWidth={selected ? 3 : 1.5}
                     onClick={() => props.onSelectNode(node.id)}
                   />
-                  <rect
-                    x={position.x - labelWidth / 2}
-                    y={position.y + 24}
-                    width={labelWidth}
-                    height={20}
-                    fill="transparent"
-                    rx="4"
-                    pointerEvents="all"
-                    onClick={() => props.onSelectNode(node.id)}
-                  />
-                  <text x={position.x} y={position.y + 36} textAnchor="middle" fill="#e4e4e7" fontSize="11" pointerEvents="none">
-                    {label}
-                  </text>
+                  {showNodeLabels && (
+                    <>
+                      <rect
+                        x={position.x - labelWidth / 2}
+                        y={position.y + 24}
+                        width={labelWidth}
+                        height={20}
+                        fill="rgba(9, 9, 11, 0.78)"
+                        rx="4"
+                        pointerEvents="all"
+                        onClick={() => props.onSelectNode(node.id)}
+                      />
+                      <text x={position.x} y={position.y + 36} textAnchor="middle" fill="#e4e4e7" fontSize="11" pointerEvents="none">
+                        {label}
+                      </text>
+                    </>
+                  )}
                 </g>
               );
             })}
