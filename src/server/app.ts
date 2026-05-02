@@ -1,4 +1,4 @@
-import { serve } from "bun";
+import { serve, type BunFile, type HTMLBundle, type Server } from "bun";
 import type { AuthProvider } from "../auth/actor";
 import { createAuthProvider } from "../auth/actor";
 import { createRoutes } from "../api/http";
@@ -13,7 +13,7 @@ export interface AppDependencies {
   repository?: GraphRepository;
   auth?: AuthProvider;
   realtime?: RealtimeHub;
-  index: Response | Blob | HTMLBundle;
+  index: Response | BunFile | HTMLBundle;
 }
 
 export function createApp(dependencies: AppDependencies) {
@@ -33,7 +33,7 @@ export function createApp(dependencies: AppDependencies) {
   };
 }
 
-export function startApp(index: Response | Blob | HTMLBundle): Server {
+export function startApp(index: Response | BunFile | HTMLBundle): Server<undefined> {
   const app = createApp({ index });
   const server = serve(app);
   console.log(`Link server running at ${server.url}`);

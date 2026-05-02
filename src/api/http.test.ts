@@ -6,7 +6,7 @@ import index from "../index.html";
 import { createApp } from "../server/app";
 import { SqliteGraphRepository } from "../storage/sqlite";
 
-let server: Server | null = null;
+let server: Server<undefined> | null = null;
 let repository: SqliteGraphRepository | null = null;
 
 afterEach(() => {
@@ -47,6 +47,9 @@ function textResult<T>(result: Awaited<ReturnType<Client["callTool"]>>): T {
   if ("toolResult" in result) return result.toolResult as T;
   const first = result.content[0];
   expect(first?.type).toBe("text");
+  if (!first || first.type !== "text") {
+    throw new Error("Expected a text tool result.");
+  }
   return JSON.parse(first.text) as T;
 }
 
@@ -54,6 +57,9 @@ function resultText(result: Awaited<ReturnType<Client["callTool"]>>): string {
   if ("toolResult" in result) return JSON.stringify(result.toolResult);
   const first = result.content[0];
   expect(first?.type).toBe("text");
+  if (!first || first.type !== "text") {
+    throw new Error("Expected a text tool result.");
+  }
   return first.text;
 }
 

@@ -94,7 +94,7 @@ describe("SqliteGraphRepository", () => {
     expect(change?.after).toMatchObject({ node: { id: node.record.id }, connectedEdges: [] });
     const afterNode = (change?.after as { node?: { deletedAt?: string | null; updatedAt?: string } }).node;
     expect(afterNode?.deletedAt).toBeString();
-    expect(afterNode?.updatedAt).toBe(afterNode?.deletedAt);
+    expect(afterNode?.updatedAt).toBe(afterNode?.deletedAt ?? undefined);
     storage.close();
   });
 });

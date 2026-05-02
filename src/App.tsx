@@ -1185,7 +1185,7 @@ function colorForTypeName(typeName: string): string {
     hash = Math.imul(hash, 16777619);
   }
 
-  return typeColorPalette[(hash >>> 0) % typeColorPalette.length];
+  return typeColorPalette[(hash >>> 0) % typeColorPalette.length] ?? "hsl(0 0% 55%)";
 }
 
 function graphNodeRadius(connectionCount: number): number {

@@ -1,3 +1,5 @@
+import type { ServerWebSocket } from "bun";
+
 export interface GraphChangeEvent {
   type: "graph.changed";
   version: number;
@@ -7,17 +9,17 @@ export interface GraphChangeEvent {
 }
 
 export class RealtimeHub {
-  private clients = new Set<ServerWebSocket<unknown>>();
+  private clients = new Set<ServerWebSocket<undefined>>();
 
   websocket = {
-    open: (ws: ServerWebSocket<unknown>) => {
+    open: (ws: ServerWebSocket<undefined>) => {
       this.clients.add(ws);
       ws.send(JSON.stringify({ type: "graph.connected" }));
     },
-    close: (ws: ServerWebSocket<unknown>) => {
+    close: (ws: ServerWebSocket<undefined>) => {
       this.clients.delete(ws);
     },
-    message: (ws: ServerWebSocket<unknown>, message: string | Buffer) => {
+    message: (ws: ServerWebSocket<undefined>, message: string | Buffer) => {
       if (String(message) === "ping") ws.send("pong");
     },
   };

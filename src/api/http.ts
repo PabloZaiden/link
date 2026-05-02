@@ -1,3 +1,4 @@
+import type { BunFile, HTMLBundle } from "bun";
 import { GraphError } from "../domain/errors";
 import type { FullGraphExport } from "../domain/types";
 import type { AuthProvider } from "../auth/actor";
@@ -6,6 +7,10 @@ import type { EdgeInput, GraphRepository, NodeInput, TypeInput } from "../storag
 import type { AppConfig } from "../server/config";
 import { handleMcpRequest } from "../mcp/server";
 import { parseEdgeInput, parseNodeInput, parseTypeInput, readJson, writeOptions } from "../graph/input";
+
+function defineRoutes<const RoutePath extends string>(routes: Bun.Serve.RoutesWithUpgrade<undefined, RoutePath>) {
+  return routes;
+}
 
 function json(data: unknown, init?: ResponseInit): Response {
   return Response.json(data, init);
@@ -42,7 +47,7 @@ export function createRoutes(deps: {
   auth: AuthProvider;
   realtime: RealtimeHub;
   config: AppConfig;
-  index: Response | Blob | HTMLBundle;
+  index: Response | BunFile | HTMLBundle;
 }) {
   const { repository, auth, realtime, config, index } = deps;
 
@@ -130,7 +135,7 @@ export function createRoutes(deps: {
     }
   }
 
-  return {
+  return defineRoutes({
     "/api/health": {
       GET: () =>
         json({
@@ -146,38 +151,38 @@ export function createRoutes(deps: {
       POST: (request: Request) => nodeTypeMutation(request, "create"),
     },
     "/api/node-types/:id": {
-      PUT: (request: Request) => nodeTypeMutation(request, "update", request.params.id),
-      DELETE: (request: Request) => nodeTypeMutation(request, "delete", request.params.id),
+      PUT: request => nodeTypeMutation(request, "update", request.params.id),
+      DELETE: request => nodeTypeMutation(request, "delete", request.params.id),
     },
     "/api/edge-types": {
       GET: () => json(repository.getSnapshot().edgeTypes),
       POST: (request: Request) => edgeTypeMutation(request, "create"),
     },
     "/api/edge-types/:id": {
-      PUT: (request: Request) => edgeTypeMutation(request, "update", request.params.id),
-      DELETE: (request: Request) => edgeTypeMutation(request, "delete", request.params.id),
+      PUT: request => edgeTypeMutation(request, "update", request.params.id),
+      DELETE: request => edgeTypeMutation(request, "delete", request.params.id),
     },
     "/api/nodes": {
       GET: () => json(repository.getSnapshot().nodes),
       POST: (request: Request) => nodeMutation(request, "create"),
     },
     "/api/nodes/:id": {
-      GET: (request: Request) => {
+      GET: request => {
         try {
           return json(repository.getContext(request.params.id).node);
         } catch (error) {
           return errorResponse(error);
         }
       },
-      PUT: (request: Request) => nodeMutation(request, "update", request.params.id),
-      DELETE: (request: Request) => nodeMutation(request, "delete", request.params.id),
+      PUT: request => nodeMutation(request, "update", request.params.id),
+      DELETE: request => nodeMutation(request, "delete", request.params.id),
     },
     "/api/edges": {
       GET: () => json(repository.getSnapshot().edges),
       POST: (request: Request) => edgeMutation(request, "create"),
     },
     "/api/edges/:id": {
-      GET: (request: Request) => {
+      GET: request => {
         try {
           const edge = repository.getSnapshot().edges.find(candidate => candidate.id === request.params.id);
           if (!edge) throw new GraphError("NOT_FOUND", "Edge not found.", { id: request.params.id });
@@ -186,14 +191,14 @@ export function createRoutes(deps: {
           return errorResponse(error);
         }
       },
-      PUT: (request: Request) => edgeMutation(request, "update", request.params.id),
-      DELETE: (request: Request) => edgeMutation(request, "delete", request.params.id),
+      PUT: request => edgeMutation(request, "update", request.params.id),
+      DELETE: request => edgeMutation(request, "delete", request.params.id),
     },
     "/api/search": {
       GET: (request: Request) => json(repository.search(new URL(request.url).searchParams.get("q") ?? "")),
     },
     "/api/nodes/:id/context": {
-      GET: (request: Request) => {
+      GET: request => {
         try {
           return json(repository.getContext(request.params.id));
         } catch (error) {
@@ -203,7 +208,7 @@ export function createRoutes(deps: {
     },
     "/api/history": { GET: () => json(repository.getHistory()) },
     "/api/history/:version": {
-      GET: (request: Request) => {
+      GET: request => {
         try {
           const version = Number(request.params.version);
           if (!Number.isInteger(version) || version < 0) {
@@ -247,7 +252,7 @@ export function createRoutes(deps: {
       },
     },
     "/api/realtime": {
-      GET: (request: Request, server: Server) => {
+      GET: (request, server) => {
         if (server.upgrade(request)) return undefined;
         return new Response("Expected WebSocket upgrade.", { status: 400 });
       },
@@ -258,5 +263,5 @@ export function createRoutes(deps: {
       DELETE: (request: Request) => handleMcpRequest({ repository, auth, realtime, request }),
     },
     "/*": index,
-  };
+  });
 }
