@@ -17,10 +17,10 @@ function readBoolean(value: string | undefined, fallback: boolean): boolean {
 }
 
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
-  const portText = env.PORT ?? "3000";
+  const portText = env.LINK_PORT ?? env.PORT ?? "3000";
   const port = Number(portText);
   if (!Number.isInteger(port) || port < 1 || port > 65535) {
-    throw configError("PORT must be an integer between 1 and 65535.", { port: portText });
+    throw configError("LINK_PORT or PORT must be an integer between 1 and 65535.", { port: portText });
   }
 
   const authMode = env.AUTH_MODE ?? "none";

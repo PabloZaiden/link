@@ -6,7 +6,7 @@ import index from "../index.html";
 import { createApp } from "../server/app";
 import { SqliteGraphRepository } from "../storage/sqlite";
 
-let server: Server | null = null;
+let server: Server<undefined> | null = null;
 let repository: SqliteGraphRepository | null = null;
 
 afterEach(() => {
@@ -47,6 +47,9 @@ function textResult<T>(result: Awaited<ReturnType<Client["callTool"]>>): T {
   if ("toolResult" in result) return result.toolResult as T;
   const first = result.content[0];
   expect(first?.type).toBe("text");
+  if (!first || first.type !== "text") {
+    throw new Error("Expected a text tool result.");
+  }
   return JSON.parse(first.text) as T;
 }
 
@@ -54,6 +57,9 @@ function resultText(result: Awaited<ReturnType<Client["callTool"]>>): string {
   if ("toolResult" in result) return JSON.stringify(result.toolResult);
   const first = result.content[0];
   expect(first?.type).toBe("text");
+  if (!first || first.type !== "text") {
+    throw new Error("Expected a text tool result.");
+  }
   return first.text;
 }
 
@@ -125,6 +131,20 @@ describe("HTTP API", () => {
     });
     expect(missingVersion.status).toBe(400);
     expect(((await missingVersion.json()) as { error: { code: string } }).error.code).toBe("VALIDATION");
+  });
+
+  test("rejects bootstrap seeding once types already exist", async () => {
+    const base = await start();
+
+    await request(base, "/api/admin/seed/bootstrap", { method: "POST", body: "{}" });
+    const secondSeed = await fetch(`${base}/api/admin/seed/bootstrap`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: "{}",
+    });
+
+    expect(secondSeed.status).toBe(409);
+    expect(((await secondSeed.json()) as { error: { code: string } }).error.code).toBe("CONFLICT");
   });
 
   test("validates history version path parameters", async () => {
