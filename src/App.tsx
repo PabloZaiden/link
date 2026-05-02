@@ -1226,7 +1226,14 @@ function GraphMap(props: {
     };
 
     if (hasDragged && (deltaX !== 0 || deltaY !== 0)) {
-      setOffset(current => ({ x: current.x + deltaX, y: current.y + deltaY }));
+      const svgBounds = event.currentTarget.getBoundingClientRect();
+      const graphUnitsPerClientPixelX = layout.bounds.width / svgBounds.width / scale;
+      const graphUnitsPerClientPixelY = layout.bounds.height / svgBounds.height / scale;
+
+      setOffset(current => ({
+        x: current.x + deltaX * graphUnitsPerClientPixelX,
+        y: current.y + deltaY * graphUnitsPerClientPixelY,
+      }));
     }
   };
 

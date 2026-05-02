@@ -74,7 +74,7 @@ describe("graph layout", () => {
     expect(layout.bounds.width).toBeGreaterThan(440);
   });
 
-  test("lays out a dense 50 node graph without circular compression", () => {
+  test("lays out a dense 53 node graph without circular compression", () => {
     const graphNodes = nodes(53);
     const graphEdges: LayoutEdge[] = [
       ...chainEdges(53),
