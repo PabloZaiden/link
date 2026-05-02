@@ -1,11 +1,17 @@
 import { GraphError } from "../domain/errors";
-import type { Actor, EdgeDirection, Metadata, MetadataSchema } from "../domain/types";
+import type { Actor } from "../domain/types";
+import {
+  expectedVersionFromValue,
+  parseEdgeInput,
+  parseNodeInput,
+  parseTypeInput,
+  requiredId,
+  type JsonMap,
+} from "../graph/input";
 import type { RealtimeHub } from "../realtime/hub";
 import type { EdgeInput, GraphRepository, NodeInput, TypeInput } from "../storage/repository";
 
-export interface JsonMap {
-  [key: string]: unknown;
-}
+export type { JsonMap };
 
 export type LinkMcpToolName =
   | "get_graph"
@@ -52,93 +58,6 @@ export interface LinkToolContext {
   actor: Actor;
 }
 
-export function isJsonMap(value: unknown): value is JsonMap {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
-function optionalString(args: JsonMap, field: string): string | undefined {
-  const value = args[field];
-  if (value === undefined || value === null) return undefined;
-  if (typeof value !== "string") throw new GraphError("VALIDATION", `${field} must be a string.`, { field, value });
-  return value;
-}
-
-function requiredString(args: JsonMap, field: string): string {
-  const value = optionalString(args, field);
-  if (value === undefined) throw new GraphError("VALIDATION", `${field} is required.`, { field });
-  return value;
-}
-
-function optionalObject<T extends JsonMap>(args: JsonMap, field: string): T | undefined {
-  const value = args[field];
-  if (value === undefined || value === null) return undefined;
-  if (!isJsonMap(value)) throw new GraphError("VALIDATION", `${field} must be an object.`, { field, value });
-  return value as T;
-}
-
-function requiredDirection(args: JsonMap): EdgeDirection {
-  const direction = requiredString(args, "direction");
-  if (direction !== "directed" && direction !== "bidirectional") {
-    throw new GraphError("VALIDATION", "direction must be directed or bidirectional.", { direction });
-  }
-  return direction;
-}
-
-function optionalDirection(args: JsonMap): EdgeDirection | undefined {
-  const direction = optionalString(args, "direction");
-  if (direction === undefined) return undefined;
-  if (direction !== "directed" && direction !== "bidirectional") {
-    throw new GraphError("VALIDATION", "direction must be directed or bidirectional.", { direction });
-  }
-  return direction;
-}
-
-function parseTypeInput(args: JsonMap, partial = false): Partial<TypeInput> | TypeInput {
-  return {
-    id: optionalString(args, "id"),
-    name: partial ? optionalString(args, "name") : requiredString(args, "name"),
-    description: optionalString(args, "description"),
-    metadataSchema: optionalObject<MetadataSchema>(args, "metadataSchema"),
-  };
-}
-
-function parseNodeInput(args: JsonMap, partial = false): Partial<NodeInput> | NodeInput {
-  return {
-    id: optionalString(args, "id"),
-    name: partial ? optionalString(args, "name") : requiredString(args, "name"),
-    typeId: partial ? optionalString(args, "typeId") : requiredString(args, "typeId"),
-    description: optionalString(args, "description"),
-    metadata: optionalObject<Metadata>(args, "metadata"),
-  };
-}
-
-function parseEdgeInput(args: JsonMap, partial = false): Partial<EdgeInput> | EdgeInput {
-  return {
-    id: optionalString(args, "id"),
-    typeId: partial ? optionalString(args, "typeId") : requiredString(args, "typeId"),
-    sourceNodeId: partial ? optionalString(args, "sourceNodeId") : requiredString(args, "sourceNodeId"),
-    targetNodeId: partial ? optionalString(args, "targetNodeId") : requiredString(args, "targetNodeId"),
-    direction: partial ? optionalDirection(args) : requiredDirection(args),
-    description: optionalString(args, "description"),
-    metadata: optionalObject<Metadata>(args, "metadata"),
-  };
-}
-
-function requiredId(args: JsonMap, field = "id"): string {
-  return requiredString(args, field);
-}
-
-function expectedVersionFromValue(value: unknown): number {
-  if (value === undefined || value === null || value === "") {
-    throw new GraphError("VALIDATION", "Mutations require a non-negative integer expectedVersion.", { expectedVersion: value });
-  }
-  const version = Number(value);
-  if (!Number.isInteger(version) || version < 0) {
-    throw new GraphError("VALIDATION", "Mutations require a non-negative integer expectedVersion.", { expectedVersion: value });
-  }
-  return version;
-}
-
 function broadcast(hub: RealtimeHub, version: number, recordType: string, recordId: string, operation: string): void {
   hub.broadcast({ type: "graph.changed", version, recordType, recordId, operation });
 }
@@ -159,6 +78,10 @@ export function callLinkTool(name: string, args: JsonMap, context: LinkToolConte
     case "get_graph":
       return repository.getSnapshot();
     case "search_graph":
+      if (String(args.query ?? "").trim() === "") {
+        const snapshot = repository.getSnapshot();
+        return { nodes: snapshot.nodes, nodeTypes: snapshot.nodeTypes, edgeTypes: snapshot.edgeTypes, edges: snapshot.edges };
+      }
       return repository.search(String(args.query ?? ""));
     case "get_node_context":
       return repository.getContext(String(args.nodeId ?? ""));
@@ -214,4 +137,3 @@ export function callLinkTool(name: string, args: JsonMap, context: LinkToolConte
       throw new GraphError("VALIDATION", "Unknown MCP tool.", { name });
   }
 }
-

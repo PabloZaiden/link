@@ -3,13 +3,20 @@ import { WebStandardStreamableHTTPServerTransport } from "@modelcontextprotocol/
 import * as z from "zod/v4";
 import type { AuthProvider } from "../auth/actor";
 import { GraphError } from "../domain/errors";
+import { isJsonMap } from "../graph/input";
 import type { RealtimeHub } from "../realtime/hub";
 import type { GraphRepository } from "../storage/repository";
 import { callLinkTool, type JsonMap, type LinkMcpToolName, linkMcpToolNames } from "./tools";
 
 const jsonObjectSchema = z.record(z.string(), z.unknown());
 const edgeDirectionSchema = z.enum(["directed", "bidirectional"]);
-const expectedVersionSchema = z.number().int().nonnegative().describe("Latest graph version observed before making this mutation.");
+const optionalStringSchema = z.string().nullish();
+const optionalJsonObjectSchema = jsonObjectSchema.nullish();
+const expectedVersionSchema = z
+  .union([z.number(), z.string()])
+  .refine(value => value !== "" && Number.isInteger(Number(value)) && Number(value) >= 0, "Expected a non-negative integer.")
+  .transform(value => Number(value))
+  .describe("Latest graph version observed before making this mutation.");
 
 type ToolInputShape = z.ZodRawShape;
 
@@ -24,53 +31,53 @@ const emptyInput: ToolInputShape = {};
 const idInput: ToolInputShape = { id: z.string().min(1) };
 const expectedVersionInput: ToolInputShape = { expectedVersion: expectedVersionSchema };
 const typeCreateInput: ToolInputShape = {
-  id: z.string().min(1).optional(),
+  id: optionalStringSchema,
   name: z.string().min(1),
-  description: z.string().optional(),
-  metadataSchema: jsonObjectSchema.optional(),
+  description: optionalStringSchema,
+  metadataSchema: optionalJsonObjectSchema,
   ...expectedVersionInput,
 };
 const typeUpdateInput: ToolInputShape = {
   ...idInput,
-  name: z.string().min(1).optional(),
-  description: z.string().optional(),
-  metadataSchema: jsonObjectSchema.optional(),
+  name: optionalStringSchema,
+  description: optionalStringSchema,
+  metadataSchema: optionalJsonObjectSchema,
   ...expectedVersionInput,
 };
 const nodeCreateInput: ToolInputShape = {
-  id: z.string().min(1).optional(),
+  id: optionalStringSchema,
   name: z.string().min(1),
   typeId: z.string().min(1),
-  description: z.string().optional(),
-  metadata: jsonObjectSchema.optional(),
+  description: optionalStringSchema,
+  metadata: optionalJsonObjectSchema,
   ...expectedVersionInput,
 };
 const nodeUpdateInput: ToolInputShape = {
   ...idInput,
-  name: z.string().min(1).optional(),
-  typeId: z.string().min(1).optional(),
-  description: z.string().optional(),
-  metadata: jsonObjectSchema.optional(),
+  name: optionalStringSchema,
+  typeId: optionalStringSchema,
+  description: optionalStringSchema,
+  metadata: optionalJsonObjectSchema,
   ...expectedVersionInput,
 };
 const edgeCreateInput: ToolInputShape = {
-  id: z.string().min(1).optional(),
+  id: optionalStringSchema,
   typeId: z.string().min(1),
   sourceNodeId: z.string().min(1),
   targetNodeId: z.string().min(1),
   direction: edgeDirectionSchema,
-  description: z.string().optional(),
-  metadata: jsonObjectSchema.optional(),
+  description: optionalStringSchema,
+  metadata: optionalJsonObjectSchema,
   ...expectedVersionInput,
 };
 const edgeUpdateInput: ToolInputShape = {
   ...idInput,
-  typeId: z.string().min(1).optional(),
-  sourceNodeId: z.string().min(1).optional(),
-  targetNodeId: z.string().min(1).optional(),
-  direction: edgeDirectionSchema.optional(),
-  description: z.string().optional(),
-  metadata: jsonObjectSchema.optional(),
+  typeId: optionalStringSchema,
+  sourceNodeId: optionalStringSchema,
+  targetNodeId: optionalStringSchema,
+  direction: edgeDirectionSchema.nullish(),
+  description: optionalStringSchema,
+  metadata: optionalJsonObjectSchema,
   ...expectedVersionInput,
 };
 const deleteInput: ToolInputShape = {
@@ -84,7 +91,7 @@ export const linkMcpTools: LinkToolDefinition[] = [
     name: "search_graph",
     title: "Search Graph",
     description: "Search nodes, edges, node types, and edge types by text.",
-    inputSchema: { query: z.string().describe("Search text. Empty text returns all searchable records.") },
+    inputSchema: { query: z.string().nullish().describe("Search text. Empty or omitted text returns all searchable records.") },
   },
   {
     name: "get_node_context",
@@ -108,7 +115,7 @@ export const linkMcpTools: LinkToolDefinition[] = [
   { name: "export_graph", title: "Export Graph", description: "Return a full graph export including tombstones and history.", inputSchema: emptyInput },
 ];
 
-if (linkMcpTools.length !== linkMcpToolNames.length) {
+if (linkMcpTools.map(tool => tool.name).join("\n") !== linkMcpToolNames.join("\n")) {
   throw new Error("Link MCP tool registry is out of sync with tool executor names.");
 }
 
@@ -138,7 +145,7 @@ export function createLinkMcpServer(deps: { repository: GraphRepository; auth: A
           });
           return {
             content: [{ type: "text" as const, text: JSON.stringify(result) }],
-            structuredContent: result,
+            structuredContent: isJsonMap(result) ? result : { result },
           };
         } catch (error) {
           if (error instanceof GraphError) {

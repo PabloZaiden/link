@@ -1,14 +1,11 @@
 import { GraphError } from "../domain/errors";
-import type { EdgeDirection, FullGraphExport, Metadata, MetadataSchema, WriteOptions } from "../domain/types";
+import type { FullGraphExport } from "../domain/types";
 import type { AuthProvider } from "../auth/actor";
 import type { RealtimeHub } from "../realtime/hub";
 import type { EdgeInput, GraphRepository, NodeInput, TypeInput } from "../storage/repository";
 import type { AppConfig } from "../server/config";
 import { handleMcpRequest } from "../mcp/server";
-
-interface JsonMap {
-  [key: string]: unknown;
-}
+import { parseEdgeInput, parseNodeInput, parseTypeInput, readJson, writeOptions } from "../graph/input";
 
 function json(data: unknown, init?: ResponseInit): Response {
   return Response.json(data, init);
@@ -21,125 +18,6 @@ function errorResponse(error: unknown): Response {
   }
   console.error(error);
   return json({ error: { code: "INTERNAL", message: "Unexpected server error." } }, { status: 500 });
-}
-
-async function readJson(request: Request): Promise<JsonMap> {
-  const text = await request.text();
-  if (!text.trim()) return {};
-  let value: unknown;
-  try {
-    value = JSON.parse(text) as unknown;
-  } catch (error) {
-    if (error instanceof SyntaxError) {
-      throw new GraphError("VALIDATION", "Request body must be valid JSON.");
-    }
-    throw error;
-  }
-  if (!isJsonMap(value)) throw new GraphError("VALIDATION", "Request body must be a JSON object.");
-  return value as JsonMap;
-}
-
-function isJsonMap(value: unknown): value is JsonMap {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
-function optionalString(body: JsonMap, field: string): string | undefined {
-  const value = body[field];
-  if (value === undefined || value === null) return undefined;
-  if (typeof value !== "string") throw new GraphError("VALIDATION", `${field} must be a string.`, { field, value });
-  return value;
-}
-
-function requiredString(body: JsonMap, field: string): string {
-  const value = optionalString(body, field);
-  if (value === undefined) throw new GraphError("VALIDATION", `${field} is required.`, { field });
-  return value;
-}
-
-function optionalObject<T extends JsonMap>(body: JsonMap, field: string): T | undefined {
-  const value = body[field];
-  if (value === undefined || value === null) return undefined;
-  if (!isJsonMap(value)) throw new GraphError("VALIDATION", `${field} must be an object.`, { field, value });
-  return value as T;
-}
-
-function requiredDirection(body: JsonMap): EdgeDirection {
-  const direction = requiredString(body, "direction");
-  if (direction !== "directed" && direction !== "bidirectional") {
-    throw new GraphError("VALIDATION", "direction must be directed or bidirectional.", { direction });
-  }
-  return direction;
-}
-
-function optionalDirection(body: JsonMap): EdgeDirection | undefined {
-  const direction = optionalString(body, "direction");
-  if (direction === undefined) return undefined;
-  if (direction !== "directed" && direction !== "bidirectional") {
-    throw new GraphError("VALIDATION", "direction must be directed or bidirectional.", { direction });
-  }
-  return direction;
-}
-
-function parseTypeInput(body: JsonMap, partial = false): Partial<TypeInput> | TypeInput {
-  const input: Partial<TypeInput> = {
-    id: optionalString(body, "id"),
-    name: partial ? optionalString(body, "name") : requiredString(body, "name"),
-    description: optionalString(body, "description"),
-    metadataSchema: optionalObject<MetadataSchema>(body, "metadataSchema"),
-  };
-  return input;
-}
-
-function parseNodeInput(body: JsonMap, partial = false): Partial<NodeInput> | NodeInput {
-  const input: Partial<NodeInput> = {
-    id: optionalString(body, "id"),
-    name: partial ? optionalString(body, "name") : requiredString(body, "name"),
-    typeId: partial ? optionalString(body, "typeId") : requiredString(body, "typeId"),
-    description: optionalString(body, "description"),
-    metadata: optionalObject<Metadata>(body, "metadata"),
-  };
-  return input;
-}
-
-function parseEdgeInput(body: JsonMap, partial = false): Partial<EdgeInput> | EdgeInput {
-  const input: Partial<EdgeInput> = {
-    id: optionalString(body, "id"),
-    typeId: partial ? optionalString(body, "typeId") : requiredString(body, "typeId"),
-    sourceNodeId: partial ? optionalString(body, "sourceNodeId") : requiredString(body, "sourceNodeId"),
-    targetNodeId: partial ? optionalString(body, "targetNodeId") : requiredString(body, "targetNodeId"),
-    direction: partial ? optionalDirection(body) : requiredDirection(body),
-    description: optionalString(body, "description"),
-    metadata: optionalObject<Metadata>(body, "metadata"),
-  };
-  return input;
-}
-
-function requiredId(args: JsonMap, field = "id"): string {
-  return requiredString(args, field);
-}
-
-function expectedVersionFromValue(value: unknown): number {
-  if (value === undefined || value === null || value === "") {
-    throw new GraphError("VALIDATION", "Mutations require a non-negative integer expectedVersion.", { expectedVersion: value });
-  }
-  const version = Number(value);
-  if (!Number.isInteger(version) || version < 0) {
-    throw new GraphError("VALIDATION", "Mutations require a non-negative integer expectedVersion.", { expectedVersion: value });
-  }
-  return version;
-}
-
-function expectedVersionFrom(request: Request, body: JsonMap): number {
-  const fromBody = body.expectedVersion;
-  const fromQuery = new URL(request.url).searchParams.get("expectedVersion");
-  return expectedVersionFromValue(fromBody ?? fromQuery);
-}
-
-function writeOptions(request: Request, body: JsonMap, auth: AuthProvider): WriteOptions {
-  return {
-    expectedVersion: expectedVersionFrom(request, body),
-    actor: auth.actorForRequest(request),
-  };
 }
 
 function broadcast(hub: RealtimeHub, version: number, recordType: string, recordId: string, operation: string): void {

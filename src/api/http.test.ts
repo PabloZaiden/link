@@ -179,6 +179,108 @@ describe("HTTP API", () => {
     const search = textResult<{ nodes: { id: string }[] }>(await client.callTool({ name: "search_graph", arguments: { query: "MCP Node" } }));
     expect(search.nodes[0]?.id).toBe(created.record.id);
 
+    const listAll = textResult<{ nodes: { id: string }[] }>(await client.callTool({ name: "search_graph", arguments: {} }));
+    expect(listAll.nodes.some(node => node.id === created.record.id)).toBe(true);
+
+    const nullQueryListAll = textResult<{ nodes: { id: string }[] }>(await client.callTool({ name: "search_graph", arguments: { query: null } }));
+    expect(nullQueryListAll.nodes.some(node => node.id === created.record.id)).toBe(true);
+
+    await client.close();
+  });
+
+  test("wires MCP update, delete, type, context, history, and export tools", async () => {
+    const base = await start();
+    await request(base, "/api/admin/seed/bootstrap", { method: "POST", body: "{}" });
+    const client = await connectMcpClient(base);
+
+    const firstGraph = await request<{ version: number }>(base, "/api/graph");
+    const createdNode = textResult<{ version: number; record: { id: string } }>(
+      await client.callTool({
+        name: "create_node",
+        arguments: { expectedVersion: String(firstGraph.version), id: null, name: "MCP Alpha", typeId: "person", description: null, metadata: null },
+      }),
+    );
+    const updatedNode = textResult<{ version: number; record: { id: string; name: string } }>(
+      await client.callTool({ name: "update_node", arguments: { expectedVersion: String(createdNode.version), id: createdNode.record.id, name: "MCP Alpha Updated" } }),
+    );
+    expect(updatedNode.record.name).toBe("MCP Alpha Updated");
+
+    const secondNode = textResult<{ version: number; record: { id: string } }>(
+      await client.callTool({ name: "create_node", arguments: { expectedVersion: updatedNode.version, name: "MCP Beta", typeId: "project" } }),
+    );
+    const edge = textResult<{ version: number; record: { id: string; description: string } }>(
+      await client.callTool({
+        name: "create_edge",
+        arguments: {
+          expectedVersion: secondNode.version,
+          typeId: "works-on",
+          sourceNodeId: createdNode.record.id,
+          targetNodeId: secondNode.record.id,
+          direction: "directed",
+          description: null,
+          metadata: null,
+        },
+      }),
+    );
+    const updatedEdge = textResult<{ version: number; record: { id: string; description: string } }>(
+      await client.callTool({ name: "update_edge", arguments: { expectedVersion: edge.version, id: edge.record.id, description: "MCP edge updated" } }),
+    );
+    expect(updatedEdge.record.description).toBe("MCP edge updated");
+
+    const context = textResult<{ node: { id: string }; edges: { id: string }[] }>(
+      await client.callTool({ name: "get_node_context", arguments: { nodeId: createdNode.record.id } }),
+    );
+    expect(context.node.id).toBe(createdNode.record.id);
+    expect(context.edges.some(candidate => candidate.id === edge.record.id)).toBe(true);
+
+    const deletedEdge = textResult<{ version: number; deletedId: string }>(
+      await client.callTool({ name: "delete_edge", arguments: { expectedVersion: updatedEdge.version, id: edge.record.id } }),
+    );
+    expect(deletedEdge.deletedId).toBe(edge.record.id);
+    const deletedNode = textResult<{ version: number; deletedId: string }>(
+      await client.callTool({ name: "delete_node", arguments: { expectedVersion: deletedEdge.version, id: secondNode.record.id } }),
+    );
+    expect(deletedNode.deletedId).toBe(secondNode.record.id);
+
+    const nodeType = textResult<{ version: number; record: { id: string; name: string } }>(
+      await client.callTool({ name: "create_node_type", arguments: { expectedVersion: deletedNode.version, id: null, name: "MCP Temp Type", metadataSchema: null } }),
+    );
+    const updatedNodeType = textResult<{ version: number; record: { id: string; description: string } }>(
+      await client.callTool({
+        name: "update_node_type",
+        arguments: { expectedVersion: nodeType.version, id: nodeType.record.id, description: "Temporary MCP node type" },
+      }),
+    );
+    expect(updatedNodeType.record.description).toBe("Temporary MCP node type");
+    const deletedNodeType = textResult<{ version: number; deletedId: string }>(
+      await client.callTool({ name: "delete_node_type", arguments: { expectedVersion: updatedNodeType.version, id: nodeType.record.id } }),
+    );
+    expect(deletedNodeType.deletedId).toBe(nodeType.record.id);
+
+    const edgeType = textResult<{ version: number; record: { id: string; name: string } }>(
+      await client.callTool({ name: "create_edge_type", arguments: { expectedVersion: deletedNodeType.version, name: "MCP Temp Edge Type" } }),
+    );
+    const updatedEdgeType = textResult<{ version: number; record: { id: string; description: string } }>(
+      await client.callTool({
+        name: "update_edge_type",
+        arguments: { expectedVersion: edgeType.version, id: edgeType.record.id, description: "Temporary MCP edge type" },
+      }),
+    );
+    expect(updatedEdgeType.record.description).toBe("Temporary MCP edge type");
+    const deletedEdgeType = textResult<{ version: number; deletedId: string }>(
+      await client.callTool({ name: "delete_edge_type", arguments: { expectedVersion: updatedEdgeType.version, id: edgeType.record.id } }),
+    );
+    expect(deletedEdgeType.deletedId).toBe(edgeType.record.id);
+
+    const history = textResult<{ version: number }[]>(await client.callTool({ name: "get_history", arguments: {} }));
+    expect(history.some(change => change.version === deletedEdgeType.version)).toBe(true);
+    const exported = textResult<{ history: { version: number }[]; tombstones: { nodeTypes: { id: string }[]; edgeTypes: { id: string }[] } }>(
+      await client.callTool({ name: "export_graph", arguments: {} }),
+    );
+    expect(exported.history.some(change => change.version === deletedEdgeType.version)).toBe(true);
+    expect(exported.tombstones.nodeTypes.some(candidate => candidate.id === nodeType.record.id)).toBe(true);
+    expect(exported.tombstones.edgeTypes.some(candidate => candidate.id === edgeType.record.id)).toBe(true);
+
     await client.close();
   });
 
