@@ -1,3 +1,6 @@
+.playwright
+.playwright-cli
+
 .data
 
 # dependencies (bun install)
