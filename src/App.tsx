@@ -167,8 +167,9 @@ export function App() {
   const edgeFormRefs = useRef<Record<string, HTMLFormElement | null>>({});
 
   const selectedNode = graph.nodes.find(node => node.id === selectedNodeId) ?? graph.nodes[0] ?? null;
-  const selectedEdge =
-    graph.edges.find(edge => edge.id === selectedEdgeId) ?? context?.edges.find(edge => edge.id === selectedEdgeId) ?? context?.edges[0] ?? null;
+  const selectedEdge = selectedEdgeId
+    ? graph.edges.find(edge => edge.id === selectedEdgeId) ?? context?.edges.find(edge => edge.id === selectedEdgeId) ?? null
+    : null;
   const selectedNodeType = graph.nodeTypes.find(type => type.id === selectedNodeTypeId) ?? graph.nodeTypes[0] ?? null;
   const selectedEdgeType = graph.edgeTypes.find(type => type.id === selectedEdgeTypeId) ?? graph.edgeTypes[0] ?? null;
   const graphNodes = useMemo(() => {
@@ -615,12 +616,8 @@ export function App() {
           <GraphMap
             graph={{ ...graph, nodes: graphNodes, edges: filteredEdges }}
             selectedNodeId={selectedNode?.id ?? ""}
-            selectedEdgeId={selectedEdge?.id ?? ""}
             onSelectNode={id => {
               maybeRequestSelection({ nodeId: id, edgeId: "" });
-            }}
-            onSelectEdge={id => {
-              maybeRequestSelection({ nodeId: resolveNodeSelectionForEdge(id), edgeId: id });
             }}
           />
         </Panel>
@@ -1043,9 +1040,7 @@ function MetadataEditor(props: { name: string; initialMetadata?: Metadata }) {
 function GraphMap(props: {
   graph: GraphSnapshot;
   selectedNodeId: string;
-  selectedEdgeId: string;
   onSelectNode: (id: string) => void;
-  onSelectEdge: (id: string) => void;
 }) {
   const radius = 170;
   const center = 220;
@@ -1061,10 +1056,12 @@ function GraphMap(props: {
 
   const clampScale = (nextScale: number) => Math.min(3, Math.max(0.5, nextScale));
 
-  const handleWheel = (event: React.WheelEvent<SVGSVGElement>) => {
-    event.preventDefault();
-    const zoomFactor = event.deltaY > 0 ? 0.9 : 1.1;
-    setScale(current => clampScale(current * zoomFactor));
+  const zoomIn = () => {
+    setScale(current => clampScale(current * 1.1));
+  };
+
+  const zoomOut = () => {
+    setScale(current => clampScale(current * 0.9));
   };
 
   const handlePointerDown = (event: React.PointerEvent<SVGSVGElement>) => {
@@ -1121,91 +1118,99 @@ function GraphMap(props: {
   return (
     <div className="space-y-3">
       <div className="flex flex-wrap items-center justify-between gap-3 text-sm text-zinc-300">
-        <p>Scroll to zoom. Drag to pan.</p>
+        <p>Drag to pan.</p>
         <button type="button" onClick={handleResetViewport}>
           Reset view
         </button>
       </div>
-      <svg
-        viewBox="0 0 440 440"
-        className="h-[440px] w-full overflow-hidden rounded-xl border border-zinc-800 bg-zinc-950"
-        onWheel={handleWheel}
-        onPointerDown={handlePointerDown}
-        onPointerMove={handlePointerMove}
-        onPointerUp={handlePointerUp}
-        onPointerLeave={handlePointerUp}
-        style={{ cursor: dragStateRef.current ? "grabbing" : "grab", touchAction: "none" }}
-      >
-        <g transform={`translate(${offset.x} ${offset.y}) scale(${scale})`}>
-          {props.graph.edges.map(edge => {
-            const source = positions.get(edge.sourceNodeId);
-            const target = positions.get(edge.targetNodeId);
-            if (!source || !target) return null;
-            const selected = edge.id === props.selectedEdgeId;
-            return (
-              <g key={edge.id} className="cursor-pointer">
-                <line
-                  x1={source.x}
-                  y1={source.y}
-                  x2={target.x}
-                  y2={target.y}
-                  stroke="transparent"
-                  strokeWidth="14"
-                  pointerEvents="stroke"
-                  onClick={() => props.onSelectEdge(edge.id)}
-                />
-                <line
-                  x1={source.x}
-                  y1={source.y}
-                  x2={target.x}
-                  y2={target.y}
-                  stroke={selected ? "#a78bfa" : "#64748b"}
-                  strokeWidth={selected ? "3" : "2"}
-                  opacity={selected ? "0.95" : "0.7"}
-                  onClick={() => props.onSelectEdge(edge.id)}
-                />
-              </g>
-            );
-          })}
-          {props.graph.nodes.map(node => {
-            const position = positions.get(node.id);
-            if (!position) return null;
-            const selected = node.id === props.selectedNodeId;
-            const label = node.name.slice(0, 18);
-            const labelWidth = Math.min(label.length * 7 + 12, 140);
-            return (
-              <g key={node.id} className="cursor-pointer">
-                <circle cx={position.x} cy={position.y} r={30} fill="transparent" pointerEvents="all" onClick={() => props.onSelectNode(node.id)} />
-                <circle
-                  cx={position.x}
-                  cy={position.y}
-                  r={selected ? 25 : 20}
-                  fill={selected ? "#8b5cf6" : "#475569"}
-                  onClick={() => props.onSelectNode(node.id)}
-                />
-                <rect
-                  x={position.x - labelWidth / 2}
-                  y={position.y + 24}
-                  width={labelWidth}
-                  height={20}
-                  fill="transparent"
-                  rx="4"
-                  pointerEvents="all"
-                  onClick={() => props.onSelectNode(node.id)}
-                />
-                <text x={position.x} y={position.y + 36} textAnchor="middle" fill="#e4e4e7" fontSize="11" pointerEvents="none">
-                  {label}
-                </text>
-              </g>
-            );
-          })}
-          {props.graph.nodes.length === 0 && (
-            <text x="220" y="220" textAnchor="middle" fill="#a1a1aa">
-              Seed types and create nodes to see the graph.
-            </text>
-          )}
-        </g>
-      </svg>
+      <div className="relative">
+        <svg
+          viewBox="0 0 440 440"
+          className="h-[440px] w-full overflow-hidden rounded-xl border border-zinc-800 bg-zinc-950"
+          onPointerDown={handlePointerDown}
+          onPointerMove={handlePointerMove}
+          onPointerUp={handlePointerUp}
+          onPointerLeave={handlePointerUp}
+          style={{ cursor: dragStateRef.current ? "grabbing" : "grab", touchAction: "none" }}
+        >
+          <g transform={`translate(${offset.x} ${offset.y}) scale(${scale})`}>
+            {props.graph.edges.map(edge => {
+              const source = positions.get(edge.sourceNodeId);
+              const target = positions.get(edge.targetNodeId);
+              if (!source || !target) return null;
+              return (
+                <g key={edge.id}>
+                  <line
+                    x1={source.x}
+                    y1={source.y}
+                    x2={target.x}
+                    y2={target.y}
+                    stroke="#64748b"
+                    strokeWidth="14"
+                    opacity="0"
+                    pointerEvents="none"
+                  />
+                  <line
+                    x1={source.x}
+                    y1={source.y}
+                    x2={target.x}
+                    y2={target.y}
+                    stroke="#64748b"
+                    strokeWidth="2"
+                    opacity="0.7"
+                    pointerEvents="none"
+                  />
+                </g>
+              );
+            })}
+            {props.graph.nodes.map(node => {
+              const position = positions.get(node.id);
+              if (!position) return null;
+              const selected = node.id === props.selectedNodeId;
+              const label = node.name.slice(0, 18);
+              const labelWidth = Math.min(label.length * 7 + 12, 140);
+              return (
+                <g key={node.id} className="cursor-pointer">
+                  <circle cx={position.x} cy={position.y} r={30} fill="transparent" pointerEvents="all" onClick={() => props.onSelectNode(node.id)} />
+                  <circle
+                    cx={position.x}
+                    cy={position.y}
+                    r={selected ? 25 : 20}
+                    fill={selected ? "#8b5cf6" : "#475569"}
+                    onClick={() => props.onSelectNode(node.id)}
+                  />
+                  <rect
+                    x={position.x - labelWidth / 2}
+                    y={position.y + 24}
+                    width={labelWidth}
+                    height={20}
+                    fill="transparent"
+                    rx="4"
+                    pointerEvents="all"
+                    onClick={() => props.onSelectNode(node.id)}
+                  />
+                  <text x={position.x} y={position.y + 36} textAnchor="middle" fill="#e4e4e7" fontSize="11" pointerEvents="none">
+                    {label}
+                  </text>
+                </g>
+              );
+            })}
+            {props.graph.nodes.length === 0 && (
+              <text x="220" y="220" textAnchor="middle" fill="#a1a1aa">
+                Seed types and create nodes to see the graph.
+              </text>
+            )}
+          </g>
+        </svg>
+        <div className="absolute bottom-4 right-4 flex flex-col gap-2">
+          <button type="button" className="h-10 w-10 p-0 text-xl leading-none" onClick={zoomIn} aria-label="Zoom in" title="Zoom in">
+            +
+          </button>
+          <button type="button" className="h-10 w-10 p-0 text-xl leading-none" onClick={zoomOut} aria-label="Zoom out" title="Zoom out">
+            -
+          </button>
+        </div>
+      </div>
     </div>
   );
 }
