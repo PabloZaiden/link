@@ -226,6 +226,8 @@ export function App() {
   const [edgeTypeFilterIds, setEdgeTypeFilterIds] = useState<string[]>([]);
   const [selectedNodeTypeId, setSelectedNodeTypeId] = useState("");
   const [selectedEdgeTypeId, setSelectedEdgeTypeId] = useState("");
+  const [editorSidebarOpen, setEditorSidebarOpen] = useState(false);
+  const [filtersOpen, setFiltersOpen] = useState(false);
   const [pendingSelection, setPendingSelection] = useState<PendingSelection | null>(null);
   const [pendingTab, setPendingTab] = useState<EditorTab | null>(null);
   const nodeFormRef = useRef<HTMLFormElement | null>(null);
@@ -660,15 +662,76 @@ export function App() {
     run("Edge type deleted.", () => api(`/api/edge-types/${id}`, { method: "DELETE", body: JSON.stringify({ expectedVersion: graph.version }) }));
 
   return (
-    <main className="min-h-screen bg-zinc-950 text-zinc-100">
-      <header className="border-b border-zinc-800 bg-zinc-900/80 px-6 py-5">
-        <p className="text-sm font-semibold uppercase tracking-[0.3em] text-violet-300">Link</p>
+    <main className="flex h-screen flex-col bg-zinc-950 text-zinc-100">
+      <header className="flex-none border-b border-zinc-800 bg-zinc-900/80 px-6 py-5">
+        <div className="flex items-center justify-between gap-4">
+          <p className="text-sm font-semibold uppercase tracking-[0.3em] text-violet-300">Link</p>
+          <button
+            type="button"
+            onClick={() => setEditorSidebarOpen(current => !current)}
+            aria-expanded={editorSidebarOpen}
+            aria-controls="graph-editor-sidebar"
+            aria-label={editorSidebarOpen ? "Hide graph editor" : "Show graph editor"}
+            className="flex h-11 w-11 items-center justify-center rounded-lg border border-zinc-700 bg-zinc-900 text-zinc-100"
+          >
+            <svg width="18" height="18" viewBox="0 0 18 18" fill="none" aria-hidden="true">
+              <path d="M2 4.5H16" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+              <path d="M2 9H16" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+              <path d="M2 13.5H16" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+            </svg>
+          </button>
+        </div>
       </header>
 
-      <section className="w-full space-y-6 px-6 py-6">
+      <section className="flex min-h-0 flex-1 flex-col gap-6 overflow-y-auto px-6 py-6">
         {error && <p className="rounded-lg border border-violet-500/20 bg-zinc-900 p-3 text-sm text-zinc-200">{error}</p>}
 
-        <Panel title="Graph map">
+        <Panel className="flex min-h-0 flex-1 flex-col">
+          {filtersOpen && (
+            <div className="mb-3 grid gap-3 lg:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)_minmax(0,1fr)]">
+              <div className="graph-search">
+                <input value={search} onChange={event => setSearch(event.target.value)} placeholder="Search nodes..." />
+                {search.trim() && (
+                  <div className="graph-search__results">
+                    {nodeSearchMatches.length === 0 ? (
+                      <p className="graph-search__empty">No matching nodes.</p>
+                    ) : (
+                      nodeSearchMatches.map(node => (
+                        <button
+                          type="button"
+                          key={node.id}
+                          className={node.id === selectedNode?.id ? "item selected" : "item"}
+                          onClick={() => {
+                            maybeRequestSelection({ nodeId: node.id, edgeId: "" });
+                            setSearch("");
+                          }}
+                        >
+                          <span>
+                            <strong>{node.name}</strong>
+                            <small>{node.typeId}</small>
+                          </span>
+                        </button>
+                      ))
+                    )}
+                  </div>
+                )}
+              </div>
+              <TypeFilterControl
+                label="Node types"
+                allLabel="All node types"
+                options={graph.nodeTypes}
+                selectedIds={nodeTypeFilterIds}
+                onChange={setNodeTypeFilterIds}
+              />
+              <TypeFilterControl
+                label="Edge types"
+                allLabel="All edge types"
+                options={graph.edgeTypes}
+                selectedIds={edgeTypeFilterIds}
+                onChange={setEdgeTypeFilterIds}
+              />
+            </div>
+          )}
           <GraphMap
             graph={graph}
             selectedNodeId={selectedNode?.id ?? ""}
@@ -681,55 +744,32 @@ export function App() {
               maybeRequestSelection({ nodeId: "", edgeId: "" });
             }}
             controls={
-              <div className="grid gap-3 lg:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)_minmax(0,1fr)]">
-                <div className="graph-search">
-                  <input value={search} onChange={event => setSearch(event.target.value)} placeholder="Search nodes..." />
-                  {search.trim() && (
-                    <div className="graph-search__results">
-                      {nodeSearchMatches.length === 0 ? (
-                        <p className="graph-search__empty">No matching nodes.</p>
-                      ) : (
-                        nodeSearchMatches.map(node => (
-                          <button
-                            type="button"
-                            key={node.id}
-                            className={node.id === selectedNode?.id ? "item selected" : "item"}
-                            onClick={() => {
-                              maybeRequestSelection({ nodeId: node.id, edgeId: "" });
-                              setSearch("");
-                            }}
-                          >
-                            <span>
-                              <strong>{node.name}</strong>
-                              <small>{node.typeId}</small>
-                            </span>
-                          </button>
-                        ))
-                      )}
-                    </div>
-                  )}
-                </div>
-                <TypeFilterControl
-                  label="Node types"
-                  allLabel="All node types"
-                  options={graph.nodeTypes}
-                  selectedIds={nodeTypeFilterIds}
-                  onChange={setNodeTypeFilterIds}
-                />
-                <TypeFilterControl
-                  label="Edge types"
-                  allLabel="All edge types"
-                  options={graph.edgeTypes}
-                  selectedIds={edgeTypeFilterIds}
-                  onChange={setEdgeTypeFilterIds}
-                />
-              </div>
+              <button
+                type="button"
+                className="bg-zinc-950/95 shadow-lg shadow-black/30 backdrop-blur"
+                onClick={() => setFiltersOpen(current => !current)}
+                aria-expanded={filtersOpen}
+                aria-label={filtersOpen ? "Hide search and filters" : "Show search and filters"}
+              >
+                {filtersOpen ? "Hide filters" : "Show filters"}
+              </button>
             }
           />
         </Panel>
 
-        <div>
-          <Panel title="Graph editor">
+        <aside
+          id="graph-editor-sidebar"
+          className={editorSidebarOpen
+            ? "fixed bottom-6 right-6 top-20 z-40 w-[min(32rem,calc(100vw-3rem))] translate-x-0 opacity-100 transition-all duration-300 ease-out"
+            : "pointer-events-none fixed bottom-6 right-6 top-20 z-40 w-[min(32rem,calc(100vw-3rem))] translate-x-[calc(100%+1.5rem)] opacity-0 transition-all duration-300 ease-out"}
+          aria-hidden={!editorSidebarOpen}
+        >
+          <div className="flex h-full flex-col overflow-hidden rounded-2xl border border-zinc-800 bg-zinc-900/95 shadow-2xl shadow-black/40 backdrop-blur">
+            <div className="border-b border-zinc-800 p-5">
+              <h2 className="text-lg font-semibold">Graph editor</h2>
+            </div>
+
+            <div className="overflow-y-auto p-5">
             <div className="mb-5 flex flex-wrap gap-2">
               <TabButton active={activeTab === "current"} onClick={() => requestTabChange("current")}>
                 Current
@@ -1007,8 +1047,9 @@ export function App() {
                 </div>
               </div>
             )}
-          </Panel>
-        </div>
+            </div>
+          </div>
+        </aside>
 
         {(pendingSelection || pendingTab) && (
           <section className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 px-6">
@@ -1040,10 +1081,10 @@ export function App() {
   );
 }
 
-function Panel(props: { title: string; children: React.ReactNode }) {
+function Panel(props: { title?: string; children: React.ReactNode; className?: string }) {
   return (
-    <section className="rounded-2xl border border-zinc-800 bg-zinc-900/80 p-5 shadow-xl shadow-black/20">
-      <h2 className="mb-4 text-lg font-semibold">{props.title}</h2>
+    <section className={`rounded-2xl border border-zinc-800 bg-zinc-900/80 p-5 shadow-xl shadow-black/20 ${props.className ?? ""}`.trim()}>
+      {props.title && <h2 className="mb-4 text-lg font-semibold">{props.title}</h2>}
       {props.children}
     </section>
   );
@@ -1398,14 +1439,13 @@ function GraphMap(props: {
   return (
     <div
       ref={graphViewportRef}
-      className={isFullscreen ? "graph-map-fullscreen flex h-full flex-col gap-3 bg-zinc-950 p-4" : "space-y-3"}
+      className={isFullscreen ? "graph-map-fullscreen flex h-full flex-col bg-zinc-950 p-4" : "flex h-full min-h-0 flex-col"}
     >
-      {props.controls}
-      <div className={isFullscreen ? "graph-map-shell relative flex-1" : "relative"}>
+      <div className="graph-map-shell relative flex-1 overflow-hidden rounded-xl border border-zinc-800 bg-zinc-950">
         <svg
           ref={svgRef}
           viewBox={viewBox}
-          className={isFullscreen ? "graph-map graph-map--fullscreen w-full overflow-hidden rounded-xl border border-zinc-800 bg-zinc-950" : "graph-map w-full overflow-hidden rounded-xl border border-zinc-800 bg-zinc-950"}
+          className={isFullscreen ? "graph-map graph-map--fullscreen block w-full" : "graph-map block w-full"}
           onPointerDown={handlePointerDown}
           onPointerMove={handlePointerMove}
           onPointerUp={handlePointerUp}
@@ -1524,6 +1564,7 @@ function GraphMap(props: {
           </g>
         </svg>
         <div className="absolute right-3 top-3 z-10 flex max-w-full flex-wrap justify-end gap-2">
+          {props.controls}
           <button type="button" className="bg-zinc-950/95 shadow-lg shadow-black/30 backdrop-blur" onClick={handleResetViewport}>
             Reset view
           </button>

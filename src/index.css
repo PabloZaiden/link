@@ -53,7 +53,8 @@
 }
 
 .graph-map {
-  height: 440px;
+  height: 100%;
+  min-height: clamp(220px, 42vh, 440px);
 }
 
 .graph-map--fullscreen {
@@ -68,6 +69,7 @@
 
 .graph-map-shell {
   min-height: 0;
+  height: 100%;
 }
 
 .filter-menu {
