@@ -1,5 +1,7 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { serve, type Server } from "bun";
+import { Client } from "@modelcontextprotocol/sdk/client/index.js";
+import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import index from "../index.html";
 import { createApp } from "../server/app";
 import { SqliteGraphRepository } from "../storage/sqlite";
@@ -33,6 +35,26 @@ async function request<T>(base: string, path: string, init?: RequestInit): Promi
   const body = (await response.json()) as T;
   expect(response.ok).toBe(true);
   return body;
+}
+
+async function connectMcpClient(base: string): Promise<Client> {
+  const client = new Client({ name: "link-test-client", version: "0.1.0" });
+  await client.connect(new StreamableHTTPClientTransport(new URL(`${base}/mcp`)));
+  return client;
+}
+
+function textResult<T>(result: Awaited<ReturnType<Client["callTool"]>>): T {
+  if ("toolResult" in result) return result.toolResult as T;
+  const first = result.content[0];
+  expect(first?.type).toBe("text");
+  return JSON.parse(first.text) as T;
+}
+
+function resultText(result: Awaited<ReturnType<Client["callTool"]>>): string {
+  if ("toolResult" in result) return JSON.stringify(result.toolResult);
+  const first = result.content[0];
+  expect(first?.type).toBe("text");
+  return first.text;
 }
 
 describe("HTTP API", () => {
@@ -137,28 +159,58 @@ describe("HTTP API", () => {
     socket.close();
   });
 
-  test("supports MCP tools with shared graph state", async () => {
+  test("supports standard MCP tools with shared graph state", async () => {
     const base = await start();
     await request(base, "/api/admin/seed/bootstrap", { method: "POST", body: "{}" });
     const graph = await request<{ version: number }>(base, "/api/graph");
-    const created = await request<{ result: { version: number; record: { id: string } } }>(base, "/mcp", {
-      method: "POST",
-      body: JSON.stringify({
-        jsonrpc: "2.0",
-        id: 1,
-        method: "tools/call",
-        params: {
-          name: "create_node",
-          arguments: { expectedVersion: graph.version, name: "MCP Node", typeId: "person" },
-        },
-      }),
-    });
+    const client = await connectMcpClient(base);
 
-    const search = await request<{ result: { nodes: { id: string }[] } }>(base, "/mcp", {
-      method: "POST",
-      body: JSON.stringify({ tool: "search_graph", args: { query: "MCP Node" } }),
-    });
+    const tools = await client.listTools();
+    const createNodeTool = tools.tools.find(tool => tool.name === "create_node");
+    expect(createNodeTool?.inputSchema.required).toContain("expectedVersion");
+    expect(tools.tools.some(tool => tool.name === "search_graph")).toBe(true);
 
-    expect(search.result.nodes[0]?.id).toBe(created.result.record.id);
+    const created = textResult<{ version: number; record: { id: string } }>(
+      await client.callTool({ name: "create_node", arguments: { expectedVersion: graph.version, name: "MCP Node", typeId: "person" } }),
+    );
+    const apiGraph = await request<{ nodes: { id: string }[] }>(base, "/api/graph");
+    expect(apiGraph.nodes.some(node => node.id === created.record.id)).toBe(true);
+
+    const search = textResult<{ nodes: { id: string }[] }>(await client.callTool({ name: "search_graph", arguments: { query: "MCP Node" } }));
+    expect(search.nodes[0]?.id).toBe(created.record.id);
+
+    await client.close();
+  });
+
+  test("returns client-compatible MCP tool errors and broadcasts MCP mutations", async () => {
+    const base = await start();
+    const socketBase = base.replace("http://", "ws://").replace("https://", "wss://");
+    const socket = new WebSocket(`${socketBase}/api/realtime`);
+    const messages: string[] = [];
+    socket.addEventListener("message", event => messages.push(String(event.data)));
+    await new Promise(resolve => socket.addEventListener("open", resolve, { once: true }));
+
+    await request(base, "/api/admin/seed/bootstrap", { method: "POST", body: "{}" });
+    const graph = await request<{ version: number }>(base, "/api/graph");
+    const client = await connectMcpClient(base);
+
+    const stale = await client.callTool({ name: "create_node", arguments: { expectedVersion: 0, name: "Stale MCP Node", typeId: "person" } });
+    expect("isError" in stale && stale.isError).toBe(true);
+    const staleError = textResult<{ code: string }>(stale);
+    expect(staleError.code).toBe("CONFLICT");
+
+    const missingVersion = await client.callTool({ name: "create_node", arguments: { name: "Missing Version", typeId: "person" } });
+    expect("isError" in missingVersion && missingVersion.isError).toBe(true);
+    expect(resultText(missingVersion)).toContain("expectedVersion");
+
+    await client.callTool({ name: "create_node", arguments: { expectedVersion: graph.version, name: "Broadcast MCP Node", typeId: "person" } });
+    await Bun.sleep(50);
+    expect(messages.some(message => message.includes("graph.changed") && message.includes("node"))).toBe(true);
+
+    const unknown = await client.callTool({ name: "unknown_link_tool", arguments: {} });
+    expect("isError" in unknown && unknown.isError).toBe(true);
+    expect(resultText(unknown)).toContain("not found");
+    await client.close();
+    socket.close();
   });
 });

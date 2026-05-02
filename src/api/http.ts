@@ -1,9 +1,10 @@
 import { GraphError } from "../domain/errors";
-import type { Actor, EdgeDirection, FullGraphExport, Metadata, MetadataSchema, WriteOptions } from "../domain/types";
+import type { EdgeDirection, FullGraphExport, Metadata, MetadataSchema, WriteOptions } from "../domain/types";
 import type { AuthProvider } from "../auth/actor";
 import type { RealtimeHub } from "../realtime/hub";
 import type { EdgeInput, GraphRepository, NodeInput, TypeInput } from "../storage/repository";
 import type { AppConfig } from "../server/config";
+import { handleMcpRequest } from "../mcp/server";
 
 interface JsonMap {
   [key: string]: unknown;
@@ -251,120 +252,6 @@ export function createRoutes(deps: {
     }
   }
 
-  async function mcp(request: Request): Promise<Response> {
-    try {
-      const body = await readJson(request);
-      if (body.jsonrpc === "2.0" && body.method === "tools/list") {
-        return json({
-          jsonrpc: "2.0",
-          id: body.id,
-          result: {
-            tools: [
-              "get_graph",
-              "search_graph",
-              "get_node_context",
-              "create_node",
-              "update_node",
-              "delete_node",
-              "create_edge",
-              "update_edge",
-              "delete_edge",
-              "create_node_type",
-              "update_node_type",
-              "delete_node_type",
-              "create_edge_type",
-              "update_edge_type",
-              "delete_edge_type",
-              "get_history",
-              "export_graph",
-            ].map(name => ({ name })),
-          },
-        });
-      }
-      const toolName = body.method === "tools/call" ? (body.params as JsonMap | undefined)?.name : body.tool;
-      if (typeof toolName !== "string") throw new GraphError("VALIDATION", "MCP tool name must be a string.", { toolName });
-      const rawArgs = body.method === "tools/call" ? (body.params as JsonMap | undefined)?.arguments : body.args;
-      const args = rawArgs === undefined ? {} : rawArgs;
-      if (!isJsonMap(args)) throw new GraphError("VALIDATION", "MCP tool arguments must be an object.", { args });
-      const result = callTool(toolName, args, request);
-      if (body.jsonrpc === "2.0") return json({ jsonrpc: "2.0", id: body.id, result });
-      return json({ result });
-    } catch (error) {
-      return errorResponse(error);
-    }
-  }
-
-  function callTool(name: string, args: JsonMap, request: Request): unknown {
-    const actor: Actor = auth.actorForRequest(request);
-    const mutate = <T extends { version: number; record?: { id?: string }; deletedId?: string }>(
-      recordType: string,
-      operation: string,
-      action: () => T,
-    ): T => {
-      const result = action();
-      broadcast(realtime, result.version, recordType, result.record?.id ?? result.deletedId ?? recordType, operation);
-      return result;
-    };
-    switch (name) {
-      case "get_graph":
-        return repository.getSnapshot();
-      case "search_graph":
-        return repository.search(String(args.query ?? ""));
-      case "get_node_context":
-        return repository.getContext(String(args.nodeId ?? ""));
-      case "get_history":
-        return repository.getHistory();
-      case "export_graph":
-        return repository.exportGraph();
-      case "create_node_type":
-        return mutate("nodeType", "create", () =>
-          repository.createNodeType(parseTypeInput(args) as TypeInput, { expectedVersion: expectedVersionFromValue(args.expectedVersion), actor }),
-        );
-      case "update_node_type":
-        return mutate("nodeType", "update", () =>
-          repository.updateNodeType(requiredId(args), parseTypeInput(args, true), { expectedVersion: expectedVersionFromValue(args.expectedVersion), actor }),
-        );
-      case "delete_node_type":
-        return mutate("nodeType", "delete", () =>
-          repository.deleteNodeType(requiredId(args), { expectedVersion: expectedVersionFromValue(args.expectedVersion), actor }),
-        );
-      case "create_edge_type":
-        return mutate("edgeType", "create", () =>
-          repository.createEdgeType(parseTypeInput(args) as TypeInput, { expectedVersion: expectedVersionFromValue(args.expectedVersion), actor }),
-        );
-      case "update_edge_type":
-        return mutate("edgeType", "update", () =>
-          repository.updateEdgeType(requiredId(args), parseTypeInput(args, true), { expectedVersion: expectedVersionFromValue(args.expectedVersion), actor }),
-        );
-      case "delete_edge_type":
-        return mutate("edgeType", "delete", () =>
-          repository.deleteEdgeType(requiredId(args), { expectedVersion: expectedVersionFromValue(args.expectedVersion), actor }),
-        );
-      case "create_node":
-        return mutate("node", "create", () =>
-          repository.createNode(parseNodeInput(args) as NodeInput, { expectedVersion: expectedVersionFromValue(args.expectedVersion), actor }),
-        );
-      case "update_node":
-        return mutate("node", "update", () =>
-          repository.updateNode(requiredId(args), parseNodeInput(args, true), { expectedVersion: expectedVersionFromValue(args.expectedVersion), actor }),
-        );
-      case "delete_node":
-        return mutate("node", "delete", () => repository.deleteNode(requiredId(args), { expectedVersion: expectedVersionFromValue(args.expectedVersion), actor }));
-      case "create_edge":
-        return mutate("edge", "create", () =>
-          repository.createEdge(parseEdgeInput(args) as EdgeInput, { expectedVersion: expectedVersionFromValue(args.expectedVersion), actor }),
-        );
-      case "update_edge":
-        return mutate("edge", "update", () =>
-          repository.updateEdge(requiredId(args), parseEdgeInput(args, true), { expectedVersion: expectedVersionFromValue(args.expectedVersion), actor }),
-        );
-      case "delete_edge":
-        return mutate("edge", "delete", () => repository.deleteEdge(requiredId(args), { expectedVersion: expectedVersionFromValue(args.expectedVersion), actor }));
-      default:
-        throw new GraphError("VALIDATION", "Unknown MCP tool.", { name });
-    }
-  }
-
   return {
     "/api/health": {
       GET: () =>
@@ -479,8 +366,9 @@ export function createRoutes(deps: {
       },
     },
     "/mcp": {
-      GET: () => json({ name: "link", toolsEndpoint: "/mcp", protocol: "json-rpc-tools" }),
-      POST: mcp,
+      GET: (request: Request) => handleMcpRequest({ repository, auth, realtime, request }),
+      POST: (request: Request) => handleMcpRequest({ repository, auth, realtime, request }),
+      DELETE: (request: Request) => handleMcpRequest({ repository, auth, realtime, request }),
     },
     "/*": index,
   };

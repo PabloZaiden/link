@@ -1,6 +1,6 @@
 # Link
 
-Link is a Bun + React graph tracker for flexible work-related entities and relationships. It stores a small graph of nodes and edges in SQLite, exposes deterministic HTTP APIs, broadcasts realtime graph updates over WebSockets, and includes an MCP-compatible JSON-RPC tool endpoint for agent workflows.
+Link is a Bun + React graph tracker for flexible work-related entities and relationships. It stores a small graph of nodes and edges in SQLite, exposes deterministic HTTP APIs, broadcasts realtime graph updates over WebSockets, and includes a standard MCP server for agent workflows.
 
 ## Features
 
@@ -115,13 +115,13 @@ Successful graph mutations broadcast `graph.changed` events with the new graph v
 
 ## MCP / agent usage
 
-The `/mcp` endpoint supports JSON-RPC-style tool discovery and calls:
+The `/mcp` endpoint is a standard MCP Streamable HTTP transport powered by `@modelcontextprotocol/sdk`. MCP clients should connect to:
 
-```bash
-curl -s -X POST http://localhost:3000/mcp \
-  -H 'content-type: application/json' \
-  -d '{"jsonrpc":"2.0","id":1,"method":"tools/list"}'
+```text
+http://localhost:3000/mcp
 ```
+
+The server exposes graph tools through MCP `tools/list` and `tools/call`, including `get_graph`, `search_graph`, `get_node_context`, type/node/edge mutation tools, `get_history`, and `export_graph`. Mutation tools require the latest graph `expectedVersion`, matching the HTTP API's optimistic concurrency behavior.
 
 Agent workflow guidance is documented in `docs/link-agent-instructions.md`.
 
