@@ -44,15 +44,6 @@ interface GraphContext {
   edges: GraphEdge[];
 }
 
-interface GraphChange {
-  version: number;
-  actor: { id: string; displayName: string };
-  timestamp: string;
-  operation: string;
-  recordType: string;
-  recordId: string;
-}
-
 type EditorTab = "current" | "new-node" | "new-edge" | "types";
 
 interface PendingSelection {
@@ -229,15 +220,12 @@ export function App() {
   const [selectedNodeId, setSelectedNodeId] = useState<string>("");
   const [context, setContext] = useState<GraphContext | null>(null);
   const [search, setSearch] = useState("");
-  const [message, setMessage] = useState("Loading graph...");
   const [error, setError] = useState("");
-  const [exportText, setExportText] = useState("");
   const [selectedEdgeId, setSelectedEdgeId] = useState("");
   const [nodeTypeFilterIds, setNodeTypeFilterIds] = useState<string[]>([]);
   const [edgeTypeFilterIds, setEdgeTypeFilterIds] = useState<string[]>([]);
   const [selectedNodeTypeId, setSelectedNodeTypeId] = useState("");
   const [selectedEdgeTypeId, setSelectedEdgeTypeId] = useState("");
-  const [history, setHistory] = useState<GraphChange[]>([]);
   const [pendingSelection, setPendingSelection] = useState<PendingSelection | null>(null);
   const [pendingTab, setPendingTab] = useState<EditorTab | null>(null);
   const nodeFormRef = useRef<HTMLFormElement | null>(null);
@@ -261,7 +249,6 @@ export function App() {
   const refresh = async () => {
     const nextGraph = await api<GraphSnapshot>("/api/graph");
     setGraph(nextGraph);
-    setMessage(`Graph loaded at version ${nextGraph.version}.`);
   };
 
   useEffect(() => {
@@ -338,15 +325,12 @@ export function App() {
     try {
       await action();
       await refresh();
-      setMessage(label);
       return true;
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
       return false;
     }
   };
-
-  const seed = () => run("Bootstrap types seeded.", () => api("/api/admin/seed/bootstrap", { method: "POST", body: "{}" }));
 
   const createNodeType = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -675,56 +659,14 @@ export function App() {
   const deleteEdgeType = (id: string) =>
     run("Edge type deleted.", () => api(`/api/edge-types/${id}`, { method: "DELETE", body: JSON.stringify({ expectedVersion: graph.version }) }));
 
-  const exportGraph = () =>
-    run("Graph exported.", async () => {
-      const exported = await api<unknown>("/api/export");
-      setExportText(JSON.stringify(exported, null, 2));
-    });
-
-  const importGraph = () =>
-    run("Graph imported.", () =>
-      api("/api/import", {
-        method: "POST",
-        body: exportText,
-      }),
-    );
-
-  const loadHistory = () =>
-    run("History loaded.", async () => {
-      setHistory(await api<GraphChange[]>("/api/history"));
-    });
-
   return (
     <main className="min-h-screen bg-zinc-950 text-zinc-100">
       <header className="border-b border-zinc-800 bg-zinc-900/80 px-6 py-5">
-        <div className="mx-auto flex max-w-7xl flex-col gap-3 md:flex-row md:items-end md:justify-between">
-          <div>
-            <p className="text-sm font-semibold uppercase tracking-[0.3em] text-violet-300">Link</p>
-            <h1 className="text-3xl font-bold">Project interaction graph</h1>
-            <p className="mt-2 max-w-3xl text-zinc-300">
-              Manage flexible entities, relationship types, metadata, and realtime graph updates from one deterministic UI.
-            </p>
-          </div>
-          <div className="rounded-xl border border-zinc-700 bg-zinc-900 px-4 py-3 text-sm">
-            <strong>Version:</strong> {graph.version} · <strong>Nodes:</strong> {graph.nodes.length} · <strong>Edges:</strong>{" "}
-            {graph.edges.length}
-          </div>
-        </div>
+        <p className="text-sm font-semibold uppercase tracking-[0.3em] text-violet-300">Link</p>
       </header>
 
-      <section className="mx-auto max-w-7xl space-y-6 px-6 py-6">
-        <Panel title="Graph controls">
-          <div className="flex flex-wrap gap-3">
-            <button onClick={seed}>Seed bootstrap types</button>
-            <button onClick={refresh}>Refresh graph</button>
-            <button onClick={exportGraph}>Export graph</button>
-            <button onClick={importGraph} disabled={!exportText.trim()}>
-              Import from export box
-            </button>
-          </div>
-          <p className="mt-3 text-sm text-zinc-300">{message}</p>
-          {error && <p className="mt-3 rounded-lg border border-violet-500/20 bg-zinc-900 p-3 text-sm text-zinc-200">{error}</p>}
-        </Panel>
+      <section className="w-full space-y-6 px-6 py-6">
+        {error && <p className="rounded-lg border border-violet-500/20 bg-zinc-900 p-3 text-sm text-zinc-200">{error}</p>}
 
         <Panel title="Graph map">
           <GraphMap
@@ -1065,32 +1007,6 @@ export function App() {
                 </div>
               </div>
             )}
-          </Panel>
-        </div>
-
-        <div className="grid gap-6 xl:grid-cols-2">
-          <Panel title="Import / export">
-            <textarea
-              className="min-h-72 font-mono text-xs"
-              value={exportText}
-              onChange={event => setExportText(event.target.value)}
-              placeholder="Exported graph JSON appears here and can be imported back."
-            />
-          </Panel>
-
-          <Panel title="History">
-            <button onClick={loadHistory}>Load history</button>
-            <div className="mt-3 grid gap-2">
-              {history.slice(0, 12).map(change => (
-                <div className="rounded-lg border border-zinc-800 p-3 text-sm" key={change.version}>
-                  <strong>v{change.version}</strong> · {change.operation} {change.recordType}/{change.recordId}
-                  <small>
-                    {change.actor.displayName} · {new Date(change.timestamp).toLocaleString()}
-                  </small>
-                </div>
-              ))}
-              {history.length === 0 && <p className="text-sm text-zinc-400">Load history to inspect append-only graph changes.</p>}
-            </div>
           </Panel>
         </div>
 
@@ -1475,6 +1391,7 @@ function GraphMap(props: {
 
   const handleResetViewport = () => {
     setScale(1);
+    setLayoutSpacing(1);
     setOffset({ x: 0, y: 0 });
   };
 
@@ -1484,49 +1401,6 @@ function GraphMap(props: {
       className={isFullscreen ? "graph-map-fullscreen flex h-full flex-col gap-3 bg-zinc-950 p-4" : "space-y-3"}
     >
       {props.controls}
-      <div className="flex flex-wrap items-center justify-between gap-3 text-sm text-zinc-300">
-        <p>Drag to pan. Reset returns to the fitted graph view.</p>
-        <div className="flex flex-wrap items-center gap-2">
-          <label className="flex items-center gap-2 rounded-lg border border-zinc-800 bg-zinc-950 px-3 py-2 text-xs text-zinc-300">
-            <span className="whitespace-nowrap">Separation</span>
-            <input
-              type="range"
-              min="0.6"
-              max="10"
-              step="0.1"
-              value={layoutSpacing}
-              onChange={event => setLayoutSpacing(Number(event.target.value))}
-              className="w-24 accent-amber-400"
-            />
-            <span className="w-8 text-right">{layoutSpacing.toFixed(1)}x</span>
-          </label>
-          <label className="flex items-center gap-2 rounded-lg border border-zinc-800 bg-zinc-950 px-3 py-2 text-xs text-zinc-300">
-            <span className="whitespace-nowrap">Zoom</span>
-            <input
-              type="range"
-              min="0.25"
-              max="12"
-              step="0.05"
-              value={scale}
-              onChange={event => setCenteredScale(Number(event.target.value))}
-              className="w-24 accent-sky-400"
-            />
-            <span className="w-10 text-right">{scale.toFixed(2)}x</span>
-          </label>
-          <button type="button" onClick={handleResetViewport}>
-            Reset view
-          </button>
-          <button
-            type="button"
-            onClick={() => {
-              void toggleFullscreen();
-            }}
-            aria-pressed={isFullscreen}
-          >
-            {isFullscreen ? "Exit full screen" : "Full screen"}
-          </button>
-        </div>
-      </div>
       <div className={isFullscreen ? "graph-map-shell relative flex-1" : "relative"}>
         <svg
           ref={svgRef}
@@ -1649,6 +1523,49 @@ function GraphMap(props: {
             )}
           </g>
         </svg>
+        <div className="absolute right-3 top-3 z-10 flex max-w-full flex-wrap justify-end gap-2">
+          <button type="button" className="bg-zinc-950/95 shadow-lg shadow-black/30 backdrop-blur" onClick={handleResetViewport}>
+            Reset view
+          </button>
+          <button
+            type="button"
+            className="bg-zinc-950/95 shadow-lg shadow-black/30 backdrop-blur"
+            onClick={() => {
+              void toggleFullscreen();
+            }}
+            aria-pressed={isFullscreen}
+          >
+            {isFullscreen ? "Exit full screen" : "Full screen"}
+          </button>
+        </div>
+        <div className="absolute bottom-3 right-3 z-10 flex max-w-full flex-wrap justify-end gap-2">
+          <label className="flex items-center gap-2 rounded-lg border border-zinc-800 bg-zinc-950/95 px-3 py-2 text-xs text-zinc-300 shadow-lg shadow-black/30 backdrop-blur">
+            <span className="whitespace-nowrap">Separation</span>
+            <input
+              type="range"
+              min="0.1"
+              max="3"
+              step="0.1"
+              value={layoutSpacing}
+              onChange={event => setLayoutSpacing(Number(event.target.value))}
+              className="w-24 accent-amber-400"
+            />
+            <span className="w-8 text-right">{layoutSpacing.toFixed(1)}x</span>
+          </label>
+          <label className="flex items-center gap-2 rounded-lg border border-zinc-800 bg-zinc-950/95 px-3 py-2 text-xs text-zinc-300 shadow-lg shadow-black/30 backdrop-blur">
+            <span className="whitespace-nowrap">Zoom</span>
+            <input
+              type="range"
+              min="0.25"
+              max="12"
+              step="0.05"
+              value={scale}
+              onChange={event => setCenteredScale(Number(event.target.value))}
+              className="w-24 accent-sky-400"
+            />
+            <span className="w-10 text-right">{scale.toFixed(2)}x</span>
+          </label>
+        </div>
       </div>
     </div>
   );

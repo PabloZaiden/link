@@ -127,6 +127,20 @@ describe("HTTP API", () => {
     expect(((await missingVersion.json()) as { error: { code: string } }).error.code).toBe("VALIDATION");
   });
 
+  test("rejects bootstrap seeding once types already exist", async () => {
+    const base = await start();
+
+    await request(base, "/api/admin/seed/bootstrap", { method: "POST", body: "{}" });
+    const secondSeed = await fetch(`${base}/api/admin/seed/bootstrap`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: "{}",
+    });
+
+    expect(secondSeed.status).toBe(409);
+    expect(((await secondSeed.json()) as { error: { code: string } }).error.code).toBe("CONFLICT");
+  });
+
   test("validates history version path parameters", async () => {
     const base = await start();
     const response = await fetch(`${base}/api/history/not-a-version`);

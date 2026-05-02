@@ -231,10 +231,19 @@ export function createRoutes(deps: {
     },
     "/api/admin/seed/bootstrap": {
       POST: (request: Request) => {
-        if (!config.adminEnabled) return json({ error: { code: "NOT_FOUND", message: "Admin endpoints are disabled." } }, { status: 404 });
-        const snapshot = repository.seedBootstrap(auth.actorForRequest(request));
-        realtime.broadcast({ type: "graph.changed", version: snapshot.version, recordType: "graph", recordId: "bootstrap", operation: "seed" });
-        return json(snapshot);
+        try {
+          if (!config.adminEnabled) return json({ error: { code: "NOT_FOUND", message: "Admin endpoints are disabled." } }, { status: 404 });
+          const snapshot = repository.getSnapshot();
+          if (snapshot.nodeTypes.length > 0 || snapshot.edgeTypes.length > 0) {
+            throw new GraphError("CONFLICT", "Bootstrap types can only be seeded when no types exist.");
+          }
+
+          const seededSnapshot = repository.seedBootstrap(auth.actorForRequest(request));
+          realtime.broadcast({ type: "graph.changed", version: seededSnapshot.version, recordType: "graph", recordId: "bootstrap", operation: "seed" });
+          return json(seededSnapshot);
+        } catch (error) {
+          return errorResponse(error);
+        }
       },
     },
     "/api/realtime": {

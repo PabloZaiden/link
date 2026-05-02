@@ -71,7 +71,7 @@ function desiredArcLength(nodeId: string, adjacency: Map<string, Set<string>>, b
   const degree = degreeForNode(nodeId, adjacency);
   const radius = radiusForNode(nodeId, nodeRadii);
   const degreeSpacing = baseSpacing * (0.9 + Math.pow(degree + 1, 0.68) * 0.33);
-  const radiusSpacing = radius * 2 + Math.max(28, baseSpacing * 0.18);
+  const radiusSpacing = radius * 2 + Math.max(8, baseSpacing * 0.12);
   return Math.max(degreeSpacing, radiusSpacing);
 }
 
@@ -205,15 +205,15 @@ function layoutComponent(
   const clusterLayouts = clusters.map(cluster => ({
     cluster,
     layout: layoutLayeredComponent(cluster.nodes, adjacency, {
-      horizontalSpacing: Math.max(140, spacing.horizontalSpacing * 0.72),
-      verticalSpacing: Math.max(96, spacing.verticalSpacing * 0.78),
+      horizontalSpacing: Math.max(24, spacing.horizontalSpacing * 0.72),
+      verticalSpacing: Math.max(18, spacing.verticalSpacing * 0.78),
     }, nodeRadii),
   }));
   const orderedClusterLayouts = orderClusterLayoutsByConnectivity(clusterLayouts, adjacency);
 
   const columns = Math.max(1, Math.ceil(Math.sqrt(orderedClusterLayouts.length)));
-  const clusterGapX = Math.max(160, spacing.horizontalSpacing * 0.95);
-  const clusterGapY = Math.max(140, spacing.verticalSpacing * 1.05);
+  const clusterGapX = Math.max(28, spacing.horizontalSpacing * 0.6);
+  const clusterGapY = Math.max(24, spacing.verticalSpacing * 0.65);
   const rowHeights: number[] = [];
   const columnWidths = Array.from({ length: columns }, () => 0);
 
@@ -393,7 +393,7 @@ function layoutLayeredComponent(
     );
     const requiredRadiusByCount = requiredCircumference / (2 * Math.PI);
     const ringMaxNodeRadius = Math.max(...rowNodes.map(nodeId => radiusForNode(nodeId, nodeRadii)), 0);
-    const radialGap = Math.max(36, spacing.verticalSpacing * 0.22);
+    const radialGap = Math.max(8, spacing.verticalSpacing * 0.12);
     const requiredRadiusByPreviousRing = previousOuterRadius + ringMaxNodeRadius + radialGap;
     const requiredRadiusByLevel = level * spacing.verticalSpacing;
     const ringRadius = Math.max(requiredRadiusByCount, requiredRadiusByPreviousRing, requiredRadiusByLevel);
@@ -610,5 +610,5 @@ function compareByDegreeThenId(adjacency: Map<string, Set<string>>) {
 }
 
 function clampSpacingMultiplier(value: number): number {
-  return Math.min(10, Math.max(0.6, value));
+  return Math.min(3, Math.max(0.1, value));
 }
