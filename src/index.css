@@ -2,33 +2,41 @@
 
 @layer base {
   :root {
-    @apply bg-slate-950 text-slate-100 font-sans;
+    @apply bg-zinc-950 text-zinc-100 font-sans;
   }
 
   body {
-    @apply m-0 min-w-[320px] min-h-screen bg-slate-950;
+    @apply m-0 min-w-[320px] min-h-screen bg-zinc-950;
   }
 
   button {
-    @apply rounded-lg bg-cyan-500 px-3 py-2 text-sm font-semibold text-slate-950 transition hover:bg-cyan-300 disabled:cursor-not-allowed disabled:bg-slate-700 disabled:text-slate-400;
+    @apply rounded-lg border border-zinc-700 bg-zinc-800 px-3 py-2 text-sm font-semibold text-zinc-100 transition hover:border-violet-400/50 hover:bg-zinc-700 disabled:cursor-not-allowed disabled:border-zinc-800 disabled:bg-zinc-800 disabled:text-zinc-500;
   }
 
   button.danger {
-    @apply bg-red-500 text-white hover:bg-red-400;
+    @apply border border-stone-700 bg-stone-800 text-stone-100 hover:border-red-900/40 hover:bg-stone-700;
   }
 
   button.item {
-    @apply flex w-full justify-between rounded-lg border border-slate-800 bg-slate-950 px-3 py-2 text-left text-slate-100 hover:border-cyan-400;
+    @apply flex w-full justify-between rounded-lg border border-zinc-800 bg-zinc-950 px-3 py-2 text-left text-zinc-100 hover:border-violet-400/40 hover:bg-zinc-900;
   }
 
   button.item.selected {
-    @apply border-amber-400 bg-amber-950/40;
+    @apply border-violet-400/60 bg-violet-950/20;
+  }
+
+  button.tab {
+    @apply rounded-full border border-zinc-700 bg-zinc-950 px-4 py-2 text-sm font-semibold text-zinc-300 hover:border-violet-400/40 hover:bg-zinc-900 hover:text-zinc-100;
+  }
+
+  button.tab.active {
+    @apply border-violet-400/60 bg-violet-500/15 text-violet-100;
   }
 
   input,
   select,
   textarea {
-    @apply w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-slate-100 outline-none focus:border-cyan-400;
+    @apply w-full rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm text-zinc-100 placeholder:text-zinc-500 outline-none focus:border-stone-400;
   }
 
   form {
@@ -36,10 +44,10 @@
   }
 
   small {
-    @apply block text-xs text-slate-400;
+    @apply block text-xs text-zinc-400;
   }
 
   pre {
-    @apply overflow-auto rounded-lg border border-slate-800 bg-slate-950 p-3 text-xs text-slate-300;
+    @apply overflow-auto rounded-lg border border-zinc-800 bg-zinc-950 p-3 text-xs text-zinc-300;
   }
 }
