@@ -1243,10 +1243,14 @@ function GraphMap(props: {
   const selectedNodeFill = "#f59e0b";
   const selectedNodeStroke = "#fde68a";
   const [scale, setScale] = useState(1);
+  const [layoutSpacing, setLayoutSpacing] = useState(1);
   const [offset, setOffset] = useState({ x: 0, y: 0 });
   const [isFullscreen, setIsFullscreen] = useState(false);
   const dragStateRef = useRef<{ startX: number; startY: number; lastX: number; lastY: number; hasDragged: boolean } | null>(null);
   const graphViewportRef = useRef<HTMLDivElement | null>(null);
+  const scaleRef = useRef(scale);
+  const offsetRef = useRef(offset);
+  const clearSelectionTimeoutRef = useRef<number | null>(null);
   const nodeTypeNames = new Map(props.graph.nodeTypes.map(nodeType => [nodeType.id, nodeType.name]));
   const edgeTypeNames = new Map(props.graph.edgeTypes.map(edgeType => [edgeType.id, edgeType.name]));
   const layout = useMemo(
@@ -1254,8 +1258,9 @@ function GraphMap(props: {
       layoutGraph(
         props.graph.nodes.map(node => ({ id: node.id })),
         props.graph.edges.map(edge => ({ sourceNodeId: edge.sourceNodeId, targetNodeId: edge.targetNodeId })),
+        { spacingMultiplier: layoutSpacing },
       ),
-    [props.graph.edges, props.graph.nodes],
+    [layoutSpacing, props.graph.edges, props.graph.nodes],
   );
   const positions = layout.positions;
   const viewBox = `${layout.bounds.minX} ${layout.bounds.minY} ${layout.bounds.width} ${layout.bounds.height}`;
@@ -1293,15 +1298,47 @@ function GraphMap(props: {
   const activeNodeTypeFilterIds = useMemo(() => new Set(props.selectedNodeTypeFilterIds), [props.selectedNodeTypeFilterIds]);
   const activeEdgeTypeFilterIds = useMemo(() => new Set(props.selectedEdgeTypeFilterIds), [props.selectedEdgeTypeFilterIds]);
 
-  const clampScale = (nextScale: number) => Math.min(3, Math.max(0.5, nextScale));
+  const clampScale = (nextScale: number) => Math.min(12, Math.max(0.25, nextScale));
 
-  const zoomIn = () => {
-    setScale(current => clampScale(current * 1.1));
+  const setCenteredScale = (nextScale: number, viewportPoint?: { clientX: number; clientY: number }) => {
+    const clampedScale = clampScale(nextScale);
+    const currentScale = scaleRef.current;
+    const currentOffset = offsetRef.current;
+    if (clampedScale === currentScale) {
+      return;
+    }
+
+    const svgBounds = graphViewportRef.current?.querySelector("svg")?.getBoundingClientRect() ?? null;
+    const graphPointX =
+      viewportPoint && svgBounds
+        ? layout.bounds.minX + ((viewportPoint.clientX - svgBounds.left) / svgBounds.width) * layout.bounds.width
+        : layout.bounds.minX + layout.bounds.width / 2;
+    const graphPointY =
+      viewportPoint && svgBounds
+        ? layout.bounds.minY + ((viewportPoint.clientY - svgBounds.top) / svgBounds.height) * layout.bounds.height
+        : layout.bounds.minY + layout.bounds.height / 2;
+    const currentVisibleCenterX = graphPointX / currentScale - currentOffset.x;
+    const currentVisibleCenterY = graphPointY / currentScale - currentOffset.y;
+
+    setOffset({
+      x: graphPointX / clampedScale - currentVisibleCenterX,
+      y: graphPointY / clampedScale - currentVisibleCenterY,
+    });
+    setScale(clampedScale);
   };
 
-  const zoomOut = () => {
-    setScale(current => clampScale(current * 0.9));
-  };
+  useEffect(() => {
+    scaleRef.current = scale;
+    offsetRef.current = offset;
+  }, [offset, scale]);
+
+  useEffect(() => {
+    return () => {
+      if (clearSelectionTimeoutRef.current !== null) {
+        window.clearTimeout(clearSelectionTimeoutRef.current);
+      }
+    };
+  }, []);
 
   useEffect(() => {
     const handleFullscreenChange = () => {
@@ -1365,8 +1402,8 @@ function GraphMap(props: {
 
     if (hasDragged && (deltaX !== 0 || deltaY !== 0)) {
       const svgBounds = event.currentTarget.getBoundingClientRect();
-      const graphUnitsPerClientPixelX = layout.bounds.width / svgBounds.width / scale;
-      const graphUnitsPerClientPixelY = layout.bounds.height / svgBounds.height / scale;
+      const graphUnitsPerClientPixelX = layout.bounds.width / svgBounds.width;
+      const graphUnitsPerClientPixelY = layout.bounds.height / svgBounds.height;
 
       setOffset(current => ({
         x: current.x + deltaX * graphUnitsPerClientPixelX,
@@ -1385,8 +1422,29 @@ function GraphMap(props: {
     event.currentTarget.releasePointerCapture(event.pointerId);
 
     if (!dragState.hasDragged && event.target === event.currentTarget && props.selectedNodeId) {
-      props.onClearSelection();
+      if (clearSelectionTimeoutRef.current !== null) {
+        window.clearTimeout(clearSelectionTimeoutRef.current);
+      }
+
+      clearSelectionTimeoutRef.current = window.setTimeout(() => {
+        props.onClearSelection();
+        clearSelectionTimeoutRef.current = null;
+      }, 180);
     }
+  };
+
+  const handleDoubleClick = (event: React.MouseEvent<SVGSVGElement>) => {
+    if (event.target !== event.currentTarget) {
+      return;
+    }
+
+    if (clearSelectionTimeoutRef.current !== null) {
+      window.clearTimeout(clearSelectionTimeoutRef.current);
+      clearSelectionTimeoutRef.current = null;
+    }
+
+    const zoomFactor = event.shiftKey ? 1 / 1.5 : 1.5;
+    setCenteredScale(scaleRef.current * zoomFactor, { clientX: event.clientX, clientY: event.clientY });
   };
 
   const handleResetViewport = () => {
@@ -1403,6 +1461,32 @@ function GraphMap(props: {
       <div className="flex flex-wrap items-center justify-between gap-3 text-sm text-zinc-300">
         <p>Drag to pan. Reset returns to the fitted graph view.</p>
         <div className="flex flex-wrap items-center gap-2">
+          <label className="flex items-center gap-2 rounded-lg border border-zinc-800 bg-zinc-950 px-3 py-2 text-xs text-zinc-300">
+            <span className="whitespace-nowrap">Separation</span>
+            <input
+              type="range"
+              min="0.6"
+              max="10"
+              step="0.1"
+              value={layoutSpacing}
+              onChange={event => setLayoutSpacing(Number(event.target.value))}
+              className="w-24 accent-amber-400"
+            />
+            <span className="w-8 text-right">{layoutSpacing.toFixed(1)}x</span>
+          </label>
+          <label className="flex items-center gap-2 rounded-lg border border-zinc-800 bg-zinc-950 px-3 py-2 text-xs text-zinc-300">
+            <span className="whitespace-nowrap">Zoom</span>
+            <input
+              type="range"
+              min="0.25"
+              max="12"
+              step="0.05"
+              value={scale}
+              onChange={event => setCenteredScale(Number(event.target.value))}
+              className="w-24 accent-sky-400"
+            />
+            <span className="w-10 text-right">{scale.toFixed(2)}x</span>
+          </label>
           <button type="button" onClick={handleResetViewport}>
             Reset view
           </button>
@@ -1425,6 +1509,7 @@ function GraphMap(props: {
           onPointerMove={handlePointerMove}
           onPointerUp={handlePointerUp}
           onPointerLeave={handlePointerUp}
+          onDoubleClick={handleDoubleClick}
           style={{ cursor: dragStateRef.current ? "grabbing" : "grab", touchAction: "none" }}
         >
           <g transform={`translate(${offset.x} ${offset.y}) scale(${scale})`}>
@@ -1532,14 +1617,6 @@ function GraphMap(props: {
             )}
           </g>
         </svg>
-        <div className="absolute bottom-4 right-4 flex flex-col gap-2">
-          <button type="button" className="h-10 w-10 p-0 text-xl leading-none" onClick={zoomIn} aria-label="Zoom in" title="Zoom in">
-            +
-          </button>
-          <button type="button" className="h-10 w-10 p-0 text-xl leading-none" onClick={zoomOut} aria-label="Zoom out" title="Zoom out">
-            -
-          </button>
-        </div>
       </div>
     </div>
   );

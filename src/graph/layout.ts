@@ -26,20 +26,29 @@ export interface GraphLayout {
   bounds: LayoutBounds;
 }
 
+export interface LayoutOptions {
+  spacingMultiplier?: number;
+}
+
 interface ComponentLayout {
   positions: Map<string, LayoutPosition>;
   width: number;
   height: number;
 }
 
-const horizontalSpacing = 180;
-const verticalSpacing = 110;
-const componentGap = 180;
+const horizontalSpacing = 240;
+const verticalSpacing = 150;
+const componentGap = 240;
 const componentPadding = 80;
 const nodePadding = 72;
 const minimumCanvasSize = 440;
 
-export function layoutGraph(nodes: LayoutNode[], edges: LayoutEdge[]): GraphLayout {
+export function layoutGraph(nodes: LayoutNode[], edges: LayoutEdge[], options: LayoutOptions = {}): GraphLayout {
+  const spacingMultiplier = clampSpacingMultiplier(options.spacingMultiplier ?? 1);
+  const scaledHorizontalSpacing = horizontalSpacing * spacingMultiplier;
+  const scaledVerticalSpacing = verticalSpacing * spacingMultiplier;
+  const scaledComponentGap = componentGap * spacingMultiplier;
+
   if (nodes.length === 0) {
     return {
       positions: new Map(),
@@ -57,7 +66,12 @@ export function layoutGraph(nodes: LayoutNode[], edges: LayoutEdge[]): GraphLayo
   const nodeIds = new Set(nodes.map(node => node.id));
   const adjacency = buildAdjacency(nodes, edges, nodeIds);
   const components = findComponents(nodes, adjacency);
-  const componentLayouts = components.map(component => layoutComponent(component, adjacency));
+  const componentLayouts = components.map(component =>
+    layoutComponent(component, adjacency, {
+      horizontalSpacing: scaledHorizontalSpacing,
+      verticalSpacing: scaledVerticalSpacing,
+    }),
+  );
   const columns = Math.max(1, Math.ceil(Math.sqrt(componentLayouts.length)));
   const positions = new Map<string, LayoutPosition>();
   const rowHeights: number[] = [];
@@ -73,14 +87,14 @@ export function layoutGraph(nodes: LayoutNode[], edges: LayoutEdge[]): GraphLayo
   const columnOffsets = columnWidths.map((_, index) => {
     let offset = componentPadding;
     for (let column = 0; column < index; column += 1) {
-      offset += (columnWidths[column] ?? 0) + componentGap;
+      offset += (columnWidths[column] ?? 0) + scaledComponentGap;
     }
     return offset;
   });
   const rowOffsets = rowHeights.map((_, index) => {
     let offset = componentPadding;
     for (let row = 0; row < index; row += 1) {
-      offset += (rowHeights[row] ?? 0) + componentGap;
+      offset += (rowHeights[row] ?? 0) + scaledComponentGap;
     }
     return offset;
   });
@@ -144,7 +158,11 @@ function findComponents(nodes: LayoutNode[], adjacency: Map<string, Set<string>>
   return components.sort((left, right) => right.length - left.length || left[0]!.localeCompare(right[0]!));
 }
 
-function layoutComponent(component: string[], adjacency: Map<string, Set<string>>): ComponentLayout {
+function layoutComponent(
+  component: string[],
+  adjacency: Map<string, Set<string>>,
+  spacing: { horizontalSpacing: number; verticalSpacing: number },
+): ComponentLayout {
   if (component.length === 1) {
     return { positions: new Map([[component[0]!, { x: nodePadding, y: nodePadding }]]), width: nodePadding * 2, height: nodePadding * 2 };
   }
@@ -154,20 +172,20 @@ function layoutComponent(component: string[], adjacency: Map<string, Set<string>
   const levels = assignLevels(root, componentSet, adjacency);
   const rows = [...levels.entries()].sort(([left], [right]) => left - right);
   const maxRowSize = Math.max(...rows.map(([, row]) => row.length), 1);
-  const width = Math.max((maxRowSize - 1) * horizontalSpacing + nodePadding * 2, nodePadding * 2);
+  const width = Math.max((maxRowSize - 1) * spacing.horizontalSpacing + nodePadding * 2, nodePadding * 2);
   const positions = new Map<string, LayoutPosition>();
 
   for (const [level, rowNodes] of rows) {
     const sortedRow = rowNodes.sort(compareByDegreeThenId(adjacency));
-    const rowWidth = (sortedRow.length - 1) * horizontalSpacing;
+    const rowWidth = (sortedRow.length - 1) * spacing.horizontalSpacing;
     const startX = (width - rowWidth) / 2;
 
     for (const [index, nodeId] of sortedRow.entries()) {
-      positions.set(nodeId, { x: startX + index * horizontalSpacing, y: nodePadding + level * verticalSpacing });
+      positions.set(nodeId, { x: startX + index * spacing.horizontalSpacing, y: nodePadding + level * spacing.verticalSpacing });
     }
   }
 
-  const height = Math.max((rows.length - 1) * verticalSpacing + nodePadding * 2, nodePadding * 2);
+  const height = Math.max((rows.length - 1) * spacing.verticalSpacing + nodePadding * 2, nodePadding * 2);
   return { positions, width, height };
 }
 
@@ -219,4 +237,8 @@ function calculateBounds(positions: LayoutPosition[]): LayoutBounds {
 
 function compareByDegreeThenId(adjacency: Map<string, Set<string>>) {
   return (left: string, right: string) => (adjacency.get(right)?.size ?? 0) - (adjacency.get(left)?.size ?? 0) || left.localeCompare(right);
+}
+
+function clampSpacingMultiplier(value: number): number {
+  return Math.min(10, Math.max(0.6, value));
 }
