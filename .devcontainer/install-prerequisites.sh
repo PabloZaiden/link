@@ -29,5 +29,5 @@ sudo apt-get install -y\
 # install playwright cli
 npm install -g @playwright/cli@latest
 
-# install playwright chrome
-(cd && playwright-cli install chrome)
+# install playwright chromium
+(cd && playwright-cli install chromium)

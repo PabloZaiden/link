@@ -43,6 +43,15 @@ interface GraphContext {
   edges: GraphEdge[];
 }
 
+interface GraphChange {
+  version: number;
+  actor: { id: string; displayName: string };
+  timestamp: string;
+  operation: string;
+  recordType: string;
+  recordId: string;
+}
+
 type EditorTab = "current" | "new-node" | "new-edge" | "types";
 
 interface PendingSelection {
@@ -157,12 +166,15 @@ export function App() {
   const [search, setSearch] = useState("");
   const [message, setMessage] = useState("Loading graph...");
   const [error, setError] = useState("");
+  const [exportText, setExportText] = useState("");
   const [selectedEdgeId, setSelectedEdgeId] = useState("");
   const [nodeTypeFilter, setNodeTypeFilter] = useState("");
   const [edgeTypeFilter, setEdgeTypeFilter] = useState("");
   const [selectedNodeTypeId, setSelectedNodeTypeId] = useState("");
   const [selectedEdgeTypeId, setSelectedEdgeTypeId] = useState("");
+  const [history, setHistory] = useState<GraphChange[]>([]);
   const [pendingSelection, setPendingSelection] = useState<PendingSelection | null>(null);
+  const [pendingTab, setPendingTab] = useState<EditorTab | null>(null);
   const nodeFormRef = useRef<HTMLFormElement | null>(null);
   const edgeFormRefs = useRef<Record<string, HTMLFormElement | null>>({});
 
@@ -362,13 +374,13 @@ export function App() {
     void saveNode(event.currentTarget);
   };
 
-  const saveNode = async (form: HTMLFormElement) => {
+  const saveNode = async (form: HTMLFormElement, expectedVersion = graph.version) => {
     if (!selectedNode) return false;
     return run("Node updated.", () =>
       api(`/api/nodes/${selectedNode.id}`, {
         method: "PUT",
         body: JSON.stringify({
-          expectedVersion: graph.version,
+          expectedVersion,
           name: formValue(form, "name"),
           typeId: formValue(form, "typeId"),
           description: formValue(form, "description"),
@@ -405,14 +417,14 @@ export function App() {
     void saveEdge(event.currentTarget, edgeId);
   };
 
-  const saveEdge = async (form: HTMLFormElement, edgeId: string) => {
+  const saveEdge = async (form: HTMLFormElement, edgeId: string, expectedVersion = graph.version) => {
     const edge = graph.edges.find(candidate => candidate.id === edgeId) ?? context?.edges.find(candidate => candidate.id === edgeId) ?? null;
     if (!edge) return false;
     return run("Edge updated.", () =>
       api(`/api/edges/${edge.id}`, {
         method: "PUT",
         body: JSON.stringify({
-          expectedVersion: graph.version,
+          expectedVersion,
           typeId: formValue(form, "typeId"),
           sourceNodeId: formValue(form, "sourceNodeId"),
           targetNodeId: formValue(form, "targetNodeId"),
@@ -482,6 +494,8 @@ export function App() {
     return context.edges.filter(edge => isEdgeDirty(edge.id, edgeFormRefs.current[edge.id] ?? null)).map(edge => edge.id);
   };
 
+  const hasDirtyForms = () => isNodeDirty() || getDirtyEdgeIds().length > 0;
+
   const applySelection = (selection: PendingSelection) => {
     setSelectedNodeId(selection.nodeId);
     setSelectedEdgeId(selection.edgeId);
@@ -492,12 +506,25 @@ export function App() {
       return;
     }
 
-    if (isNodeDirty() || getDirtyEdgeIds().length > 0) {
+    if (hasDirtyForms()) {
       setPendingSelection(selection);
       return;
     }
 
     applySelection(selection);
+  };
+
+  const requestTabChange = (tab: EditorTab) => {
+    if (tab === activeTab) {
+      return;
+    }
+
+    if (hasDirtyForms()) {
+      setPendingTab(tab);
+      return;
+    }
+
+    setActiveTab(tab);
   };
 
   const resolveNodeSelectionForEdge = (edgeId: string) => {
@@ -521,12 +548,15 @@ export function App() {
 
     const shouldSaveNode = isNodeDirty();
     const dirtyEdgeIds = getDirtyEdgeIds();
+    let expectedVersion = graph.version;
 
     if (shouldSaveNode && nodeFormRef.current) {
-      const saved = await saveNode(nodeFormRef.current);
+      const saved = await saveNode(nodeFormRef.current, expectedVersion);
       if (!saved) {
         return;
       }
+
+      expectedVersion += 1;
     }
 
     for (const edgeId of dirtyEdgeIds) {
@@ -535,23 +565,33 @@ export function App() {
         continue;
       }
 
-      const saved = await saveEdge(form, edgeId);
+      const saved = await saveEdge(form, edgeId, expectedVersion);
       if (!saved) {
         return;
       }
+
+      expectedVersion += 1;
     }
 
     applySelection(pendingSelection);
     setPendingSelection(null);
+
+    if (pendingTab) {
+      setActiveTab(pendingTab);
+      setPendingTab(null);
+    }
   };
 
   const handlePendingSelectionDiscard = () => {
-    if (!pendingSelection) {
-      return;
+    if (pendingSelection) {
+      applySelection(pendingSelection);
+      setPendingSelection(null);
     }
 
-    applySelection(pendingSelection);
-    setPendingSelection(null);
+    if (pendingTab) {
+      setActiveTab(pendingTab);
+      setPendingTab(null);
+    }
   };
 
   const deleteNode = (id: string) =>
@@ -565,6 +605,25 @@ export function App() {
 
   const deleteEdgeType = (id: string) =>
     run("Edge type deleted.", () => api(`/api/edge-types/${id}`, { method: "DELETE", body: JSON.stringify({ expectedVersion: graph.version }) }));
+
+  const exportGraph = () =>
+    run("Graph exported.", async () => {
+      const exported = await api<unknown>("/api/export");
+      setExportText(JSON.stringify(exported, null, 2));
+    });
+
+  const importGraph = () =>
+    run("Graph imported.", () =>
+      api("/api/import", {
+        method: "POST",
+        body: exportText,
+      }),
+    );
+
+  const loadHistory = () =>
+    run("History loaded.", async () => {
+      setHistory(await api<GraphChange[]>("/api/history"));
+    });
 
   return (
     <main className="min-h-screen bg-zinc-950 text-zinc-100">
@@ -589,6 +648,10 @@ export function App() {
           <div className="flex flex-wrap gap-3">
             <button onClick={seed}>Seed bootstrap types</button>
             <button onClick={refresh}>Refresh graph</button>
+            <button onClick={exportGraph}>Export graph</button>
+            <button onClick={importGraph} disabled={!exportText.trim()}>
+              Import from export box
+            </button>
           </div>
           <p className="mt-3 text-sm text-zinc-300">{message}</p>
           {error && <p className="mt-3 rounded-lg border border-violet-500/20 bg-zinc-900 p-3 text-sm text-zinc-200">{error}</p>}
@@ -649,16 +712,16 @@ export function App() {
         <div>
           <Panel title="Graph editor">
             <div className="mb-5 flex flex-wrap gap-2">
-              <TabButton active={activeTab === "current"} onClick={() => setActiveTab("current")}>
+              <TabButton active={activeTab === "current"} onClick={() => requestTabChange("current")}>
                 Current
               </TabButton>
-              <TabButton active={activeTab === "new-node"} onClick={() => setActiveTab("new-node")}>
+              <TabButton active={activeTab === "new-node"} onClick={() => requestTabChange("new-node")}>
                 New node
               </TabButton>
-              <TabButton active={activeTab === "new-edge"} onClick={() => setActiveTab("new-edge")}>
+              <TabButton active={activeTab === "new-edge"} onClick={() => requestTabChange("new-edge")}>
                 New edge
               </TabButton>
-              <TabButton active={activeTab === "types"} onClick={() => setActiveTab("types")}>
+              <TabButton active={activeTab === "types"} onClick={() => requestTabChange("types")}>
                 Types
               </TabButton>
             </div>
@@ -928,13 +991,45 @@ export function App() {
           </Panel>
         </div>
 
-        {pendingSelection && (
+        <div className="grid gap-6 xl:grid-cols-2">
+          <Panel title="Import / export">
+            <textarea
+              className="min-h-72 font-mono text-xs"
+              value={exportText}
+              onChange={event => setExportText(event.target.value)}
+              placeholder="Exported graph JSON appears here and can be imported back."
+            />
+          </Panel>
+
+          <Panel title="History">
+            <button onClick={loadHistory}>Load history</button>
+            <div className="mt-3 grid gap-2">
+              {history.slice(0, 12).map(change => (
+                <div className="rounded-lg border border-zinc-800 p-3 text-sm" key={change.version}>
+                  <strong>v{change.version}</strong> · {change.operation} {change.recordType}/{change.recordId}
+                  <small>
+                    {change.actor.displayName} · {new Date(change.timestamp).toLocaleString()}
+                  </small>
+                </div>
+              ))}
+              {history.length === 0 && <p className="text-sm text-zinc-400">Load history to inspect append-only graph changes.</p>}
+            </div>
+          </Panel>
+        </div>
+
+        {(pendingSelection || pendingTab) && (
           <section className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 px-6">
             <div className="w-full max-w-md rounded-2xl border border-zinc-700 bg-zinc-900 p-5 shadow-2xl shadow-black/40">
               <h2 className="text-lg font-semibold">Unsaved changes</h2>
               <p className="mt-2 text-sm text-zinc-300">You have unsaved node or edge edits. Save them before switching selection?</p>
               <div className="mt-5 flex flex-wrap justify-end gap-2">
-                <button type="button" onClick={() => setPendingSelection(null)}>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setPendingSelection(null);
+                    setPendingTab(null);
+                  }}
+                >
                   Keep editing
                 </button>
                 <button type="button" className="danger" onClick={handlePendingSelectionDiscard}>
@@ -980,7 +1075,10 @@ function MetadataEditor(props: { name: string; initialMetadata?: Metadata }) {
     try {
       return { serializedValue: serializeMetadataEntries(entries), error: "" };
     } catch (err) {
-      return { serializedValue: "{}", error: err instanceof Error ? err.message : String(err) };
+      return {
+        serializedValue: JSON.stringify({ __metadataEditorInvalid: true, entries }),
+        error: err instanceof Error ? err.message : String(err),
+      };
     }
   }, [entries]);
 
