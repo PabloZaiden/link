@@ -1037,6 +1037,25 @@ function MetadataEditor(props: { name: string; initialMetadata?: Metadata }) {
   );
 }
 
+const typeColorPalette = Array.from({ length: 128 }, (_, index) => {
+  const hue = (index * 47) % 360;
+  const saturation = 52 + ((index * 29) % 18);
+  const lightness = 42 + ((index * 31) % 16);
+  return `hsl(${hue} ${saturation}% ${lightness}%)`;
+});
+
+function colorForTypeName(typeName: string): string {
+  const normalizedName = typeName.trim().toLowerCase() || "unknown";
+  let hash = 2166136261;
+
+  for (const character of normalizedName) {
+    hash ^= character.charCodeAt(0);
+    hash = Math.imul(hash, 16777619);
+  }
+
+  return typeColorPalette[(hash >>> 0) % typeColorPalette.length];
+}
+
 function GraphMap(props: {
   graph: GraphSnapshot;
   selectedNodeId: string;
@@ -1044,9 +1063,13 @@ function GraphMap(props: {
 }) {
   const radius = 170;
   const center = 220;
+  const selectedNodeFill = "#f59e0b";
+  const selectedNodeStroke = "#fde68a";
   const [scale, setScale] = useState(1);
   const [offset, setOffset] = useState({ x: 0, y: 0 });
   const dragStateRef = useRef<{ startX: number; startY: number; lastX: number; lastY: number; hasDragged: boolean } | null>(null);
+  const nodeTypeNames = new Map(props.graph.nodeTypes.map(nodeType => [nodeType.id, nodeType.name]));
+  const edgeTypeNames = new Map(props.graph.edgeTypes.map(edgeType => [edgeType.id, edgeType.name]));
   const positions = new Map(
     props.graph.nodes.map((node, index) => {
       const angle = (Math.PI * 2 * index) / Math.max(props.graph.nodes.length, 1);
@@ -1138,6 +1161,11 @@ function GraphMap(props: {
               const source = positions.get(edge.sourceNodeId);
               const target = positions.get(edge.targetNodeId);
               if (!source || !target) return null;
+              const label = edgeTypeNames.get(edge.typeId) ?? edge.typeId;
+              const edgeColor = colorForTypeName(label);
+              const midX = (source.x + target.x) / 2;
+              const midY = (source.y + target.y) / 2;
+              const labelWidth = Math.min(label.length * 7 + 16, 180);
               return (
                 <g key={edge.id}>
                   <line
@@ -1145,7 +1173,7 @@ function GraphMap(props: {
                     y1={source.y}
                     x2={target.x}
                     y2={target.y}
-                    stroke="#64748b"
+                    stroke={edgeColor}
                     strokeWidth="14"
                     opacity="0"
                     pointerEvents="none"
@@ -1155,11 +1183,24 @@ function GraphMap(props: {
                     y1={source.y}
                     x2={target.x}
                     y2={target.y}
-                    stroke="#64748b"
+                    stroke={edgeColor}
                     strokeWidth="2"
-                    opacity="0.7"
+                    opacity="0.78"
                     pointerEvents="none"
                   />
+                  <rect
+                    x={midX - labelWidth / 2}
+                    y={midY - 18}
+                    width={labelWidth}
+                    height={18}
+                    rx="4"
+                    fill={edgeColor}
+                    opacity="0.2"
+                    pointerEvents="none"
+                  />
+                  <text x={midX} y={midY - 6} textAnchor="middle" fill="#e4e4e7" fontSize="10" pointerEvents="none">
+                    {label}
+                  </text>
                 </g>
               );
             })}
@@ -1167,6 +1208,8 @@ function GraphMap(props: {
               const position = positions.get(node.id);
               if (!position) return null;
               const selected = node.id === props.selectedNodeId;
+              const nodeTypeName = nodeTypeNames.get(node.typeId) ?? node.typeId;
+              const nodeColor = colorForTypeName(nodeTypeName);
               const label = node.name.slice(0, 18);
               const labelWidth = Math.min(label.length * 7 + 12, 140);
               return (
@@ -1176,7 +1219,9 @@ function GraphMap(props: {
                     cx={position.x}
                     cy={position.y}
                     r={selected ? 25 : 20}
-                    fill={selected ? "#8b5cf6" : "#475569"}
+                    fill={selected ? selectedNodeFill : nodeColor}
+                    stroke={selected ? selectedNodeStroke : "rgba(244, 244, 245, 0.2)"}
+                    strokeWidth={selected ? 3 : 1.5}
                     onClick={() => props.onSelectNode(node.id)}
                   />
                   <rect
