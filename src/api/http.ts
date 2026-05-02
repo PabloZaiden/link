@@ -1,13 +1,11 @@
 import { GraphError } from "../domain/errors";
-import type { Actor, EdgeDirection, FullGraphExport, Metadata, MetadataSchema, WriteOptions } from "../domain/types";
+import type { FullGraphExport } from "../domain/types";
 import type { AuthProvider } from "../auth/actor";
 import type { RealtimeHub } from "../realtime/hub";
 import type { EdgeInput, GraphRepository, NodeInput, TypeInput } from "../storage/repository";
 import type { AppConfig } from "../server/config";
-
-interface JsonMap {
-  [key: string]: unknown;
-}
+import { handleMcpRequest } from "../mcp/server";
+import { parseEdgeInput, parseNodeInput, parseTypeInput, readJson, writeOptions } from "../graph/input";
 
 function json(data: unknown, init?: ResponseInit): Response {
   return Response.json(data, init);
@@ -20,125 +18,6 @@ function errorResponse(error: unknown): Response {
   }
   console.error(error);
   return json({ error: { code: "INTERNAL", message: "Unexpected server error." } }, { status: 500 });
-}
-
-async function readJson(request: Request): Promise<JsonMap> {
-  const text = await request.text();
-  if (!text.trim()) return {};
-  let value: unknown;
-  try {
-    value = JSON.parse(text) as unknown;
-  } catch (error) {
-    if (error instanceof SyntaxError) {
-      throw new GraphError("VALIDATION", "Request body must be valid JSON.");
-    }
-    throw error;
-  }
-  if (!isJsonMap(value)) throw new GraphError("VALIDATION", "Request body must be a JSON object.");
-  return value as JsonMap;
-}
-
-function isJsonMap(value: unknown): value is JsonMap {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
-function optionalString(body: JsonMap, field: string): string | undefined {
-  const value = body[field];
-  if (value === undefined || value === null) return undefined;
-  if (typeof value !== "string") throw new GraphError("VALIDATION", `${field} must be a string.`, { field, value });
-  return value;
-}
-
-function requiredString(body: JsonMap, field: string): string {
-  const value = optionalString(body, field);
-  if (value === undefined) throw new GraphError("VALIDATION", `${field} is required.`, { field });
-  return value;
-}
-
-function optionalObject<T extends JsonMap>(body: JsonMap, field: string): T | undefined {
-  const value = body[field];
-  if (value === undefined || value === null) return undefined;
-  if (!isJsonMap(value)) throw new GraphError("VALIDATION", `${field} must be an object.`, { field, value });
-  return value as T;
-}
-
-function requiredDirection(body: JsonMap): EdgeDirection {
-  const direction = requiredString(body, "direction");
-  if (direction !== "directed" && direction !== "bidirectional") {
-    throw new GraphError("VALIDATION", "direction must be directed or bidirectional.", { direction });
-  }
-  return direction;
-}
-
-function optionalDirection(body: JsonMap): EdgeDirection | undefined {
-  const direction = optionalString(body, "direction");
-  if (direction === undefined) return undefined;
-  if (direction !== "directed" && direction !== "bidirectional") {
-    throw new GraphError("VALIDATION", "direction must be directed or bidirectional.", { direction });
-  }
-  return direction;
-}
-
-function parseTypeInput(body: JsonMap, partial = false): Partial<TypeInput> | TypeInput {
-  const input: Partial<TypeInput> = {
-    id: optionalString(body, "id"),
-    name: partial ? optionalString(body, "name") : requiredString(body, "name"),
-    description: optionalString(body, "description"),
-    metadataSchema: optionalObject<MetadataSchema>(body, "metadataSchema"),
-  };
-  return input;
-}
-
-function parseNodeInput(body: JsonMap, partial = false): Partial<NodeInput> | NodeInput {
-  const input: Partial<NodeInput> = {
-    id: optionalString(body, "id"),
-    name: partial ? optionalString(body, "name") : requiredString(body, "name"),
-    typeId: partial ? optionalString(body, "typeId") : requiredString(body, "typeId"),
-    description: optionalString(body, "description"),
-    metadata: optionalObject<Metadata>(body, "metadata"),
-  };
-  return input;
-}
-
-function parseEdgeInput(body: JsonMap, partial = false): Partial<EdgeInput> | EdgeInput {
-  const input: Partial<EdgeInput> = {
-    id: optionalString(body, "id"),
-    typeId: partial ? optionalString(body, "typeId") : requiredString(body, "typeId"),
-    sourceNodeId: partial ? optionalString(body, "sourceNodeId") : requiredString(body, "sourceNodeId"),
-    targetNodeId: partial ? optionalString(body, "targetNodeId") : requiredString(body, "targetNodeId"),
-    direction: partial ? optionalDirection(body) : requiredDirection(body),
-    description: optionalString(body, "description"),
-    metadata: optionalObject<Metadata>(body, "metadata"),
-  };
-  return input;
-}
-
-function requiredId(args: JsonMap, field = "id"): string {
-  return requiredString(args, field);
-}
-
-function expectedVersionFromValue(value: unknown): number {
-  if (value === undefined || value === null || value === "") {
-    throw new GraphError("VALIDATION", "Mutations require a non-negative integer expectedVersion.", { expectedVersion: value });
-  }
-  const version = Number(value);
-  if (!Number.isInteger(version) || version < 0) {
-    throw new GraphError("VALIDATION", "Mutations require a non-negative integer expectedVersion.", { expectedVersion: value });
-  }
-  return version;
-}
-
-function expectedVersionFrom(request: Request, body: JsonMap): number {
-  const fromBody = body.expectedVersion;
-  const fromQuery = new URL(request.url).searchParams.get("expectedVersion");
-  return expectedVersionFromValue(fromBody ?? fromQuery);
-}
-
-function writeOptions(request: Request, body: JsonMap, auth: AuthProvider): WriteOptions {
-  return {
-    expectedVersion: expectedVersionFrom(request, body),
-    actor: auth.actorForRequest(request),
-  };
 }
 
 function broadcast(hub: RealtimeHub, version: number, recordType: string, recordId: string, operation: string): void {
@@ -248,120 +127,6 @@ export function createRoutes(deps: {
       return mutation(() => repository.deleteEdge(id, options), realtime, "edge", "delete");
     } catch (error) {
       return errorResponse(error);
-    }
-  }
-
-  async function mcp(request: Request): Promise<Response> {
-    try {
-      const body = await readJson(request);
-      if (body.jsonrpc === "2.0" && body.method === "tools/list") {
-        return json({
-          jsonrpc: "2.0",
-          id: body.id,
-          result: {
-            tools: [
-              "get_graph",
-              "search_graph",
-              "get_node_context",
-              "create_node",
-              "update_node",
-              "delete_node",
-              "create_edge",
-              "update_edge",
-              "delete_edge",
-              "create_node_type",
-              "update_node_type",
-              "delete_node_type",
-              "create_edge_type",
-              "update_edge_type",
-              "delete_edge_type",
-              "get_history",
-              "export_graph",
-            ].map(name => ({ name })),
-          },
-        });
-      }
-      const toolName = body.method === "tools/call" ? (body.params as JsonMap | undefined)?.name : body.tool;
-      if (typeof toolName !== "string") throw new GraphError("VALIDATION", "MCP tool name must be a string.", { toolName });
-      const rawArgs = body.method === "tools/call" ? (body.params as JsonMap | undefined)?.arguments : body.args;
-      const args = rawArgs === undefined ? {} : rawArgs;
-      if (!isJsonMap(args)) throw new GraphError("VALIDATION", "MCP tool arguments must be an object.", { args });
-      const result = callTool(toolName, args, request);
-      if (body.jsonrpc === "2.0") return json({ jsonrpc: "2.0", id: body.id, result });
-      return json({ result });
-    } catch (error) {
-      return errorResponse(error);
-    }
-  }
-
-  function callTool(name: string, args: JsonMap, request: Request): unknown {
-    const actor: Actor = auth.actorForRequest(request);
-    const mutate = <T extends { version: number; record?: { id?: string }; deletedId?: string }>(
-      recordType: string,
-      operation: string,
-      action: () => T,
-    ): T => {
-      const result = action();
-      broadcast(realtime, result.version, recordType, result.record?.id ?? result.deletedId ?? recordType, operation);
-      return result;
-    };
-    switch (name) {
-      case "get_graph":
-        return repository.getSnapshot();
-      case "search_graph":
-        return repository.search(String(args.query ?? ""));
-      case "get_node_context":
-        return repository.getContext(String(args.nodeId ?? ""));
-      case "get_history":
-        return repository.getHistory();
-      case "export_graph":
-        return repository.exportGraph();
-      case "create_node_type":
-        return mutate("nodeType", "create", () =>
-          repository.createNodeType(parseTypeInput(args) as TypeInput, { expectedVersion: expectedVersionFromValue(args.expectedVersion), actor }),
-        );
-      case "update_node_type":
-        return mutate("nodeType", "update", () =>
-          repository.updateNodeType(requiredId(args), parseTypeInput(args, true), { expectedVersion: expectedVersionFromValue(args.expectedVersion), actor }),
-        );
-      case "delete_node_type":
-        return mutate("nodeType", "delete", () =>
-          repository.deleteNodeType(requiredId(args), { expectedVersion: expectedVersionFromValue(args.expectedVersion), actor }),
-        );
-      case "create_edge_type":
-        return mutate("edgeType", "create", () =>
-          repository.createEdgeType(parseTypeInput(args) as TypeInput, { expectedVersion: expectedVersionFromValue(args.expectedVersion), actor }),
-        );
-      case "update_edge_type":
-        return mutate("edgeType", "update", () =>
-          repository.updateEdgeType(requiredId(args), parseTypeInput(args, true), { expectedVersion: expectedVersionFromValue(args.expectedVersion), actor }),
-        );
-      case "delete_edge_type":
-        return mutate("edgeType", "delete", () =>
-          repository.deleteEdgeType(requiredId(args), { expectedVersion: expectedVersionFromValue(args.expectedVersion), actor }),
-        );
-      case "create_node":
-        return mutate("node", "create", () =>
-          repository.createNode(parseNodeInput(args) as NodeInput, { expectedVersion: expectedVersionFromValue(args.expectedVersion), actor }),
-        );
-      case "update_node":
-        return mutate("node", "update", () =>
-          repository.updateNode(requiredId(args), parseNodeInput(args, true), { expectedVersion: expectedVersionFromValue(args.expectedVersion), actor }),
-        );
-      case "delete_node":
-        return mutate("node", "delete", () => repository.deleteNode(requiredId(args), { expectedVersion: expectedVersionFromValue(args.expectedVersion), actor }));
-      case "create_edge":
-        return mutate("edge", "create", () =>
-          repository.createEdge(parseEdgeInput(args) as EdgeInput, { expectedVersion: expectedVersionFromValue(args.expectedVersion), actor }),
-        );
-      case "update_edge":
-        return mutate("edge", "update", () =>
-          repository.updateEdge(requiredId(args), parseEdgeInput(args, true), { expectedVersion: expectedVersionFromValue(args.expectedVersion), actor }),
-        );
-      case "delete_edge":
-        return mutate("edge", "delete", () => repository.deleteEdge(requiredId(args), { expectedVersion: expectedVersionFromValue(args.expectedVersion), actor }));
-      default:
-        throw new GraphError("VALIDATION", "Unknown MCP tool.", { name });
     }
   }
 
@@ -479,8 +244,9 @@ export function createRoutes(deps: {
       },
     },
     "/mcp": {
-      GET: () => json({ name: "link", toolsEndpoint: "/mcp", protocol: "json-rpc-tools" }),
-      POST: mcp,
+      GET: (request: Request) => handleMcpRequest({ repository, auth, realtime, request }),
+      POST: (request: Request) => handleMcpRequest({ repository, auth, realtime, request }),
+      DELETE: (request: Request) => handleMcpRequest({ repository, auth, realtime, request }),
     },
     "/*": index,
   };

@@ -1,5 +1,7 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { serve, type Server } from "bun";
+import { Client } from "@modelcontextprotocol/sdk/client/index.js";
+import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import index from "../index.html";
 import { createApp } from "../server/app";
 import { SqliteGraphRepository } from "../storage/sqlite";
@@ -33,6 +35,26 @@ async function request<T>(base: string, path: string, init?: RequestInit): Promi
   const body = (await response.json()) as T;
   expect(response.ok).toBe(true);
   return body;
+}
+
+async function connectMcpClient(base: string): Promise<Client> {
+  const client = new Client({ name: "link-test-client", version: "0.1.0" });
+  await client.connect(new StreamableHTTPClientTransport(new URL(`${base}/mcp`)));
+  return client;
+}
+
+function textResult<T>(result: Awaited<ReturnType<Client["callTool"]>>): T {
+  if ("toolResult" in result) return result.toolResult as T;
+  const first = result.content[0];
+  expect(first?.type).toBe("text");
+  return JSON.parse(first.text) as T;
+}
+
+function resultText(result: Awaited<ReturnType<Client["callTool"]>>): string {
+  if ("toolResult" in result) return JSON.stringify(result.toolResult);
+  const first = result.content[0];
+  expect(first?.type).toBe("text");
+  return first.text;
 }
 
 describe("HTTP API", () => {
@@ -137,28 +159,160 @@ describe("HTTP API", () => {
     socket.close();
   });
 
-  test("supports MCP tools with shared graph state", async () => {
+  test("supports standard MCP tools with shared graph state", async () => {
     const base = await start();
     await request(base, "/api/admin/seed/bootstrap", { method: "POST", body: "{}" });
     const graph = await request<{ version: number }>(base, "/api/graph");
-    const created = await request<{ result: { version: number; record: { id: string } } }>(base, "/mcp", {
-      method: "POST",
-      body: JSON.stringify({
-        jsonrpc: "2.0",
-        id: 1,
-        method: "tools/call",
-        params: {
-          name: "create_node",
-          arguments: { expectedVersion: graph.version, name: "MCP Node", typeId: "person" },
+    const client = await connectMcpClient(base);
+
+    const tools = await client.listTools();
+    const createNodeTool = tools.tools.find(tool => tool.name === "create_node");
+    expect(createNodeTool?.inputSchema.required).toContain("expectedVersion");
+    expect(tools.tools.some(tool => tool.name === "search_graph")).toBe(true);
+
+    const created = textResult<{ version: number; record: { id: string } }>(
+      await client.callTool({ name: "create_node", arguments: { expectedVersion: graph.version, name: "MCP Node", typeId: "person" } }),
+    );
+    const apiGraph = await request<{ nodes: { id: string }[] }>(base, "/api/graph");
+    expect(apiGraph.nodes.some(node => node.id === created.record.id)).toBe(true);
+
+    const search = textResult<{ nodes: { id: string }[] }>(await client.callTool({ name: "search_graph", arguments: { query: "MCP Node" } }));
+    expect(search.nodes[0]?.id).toBe(created.record.id);
+
+    const listAll = textResult<{ nodes: { id: string }[] }>(await client.callTool({ name: "search_graph", arguments: {} }));
+    expect(listAll.nodes.some(node => node.id === created.record.id)).toBe(true);
+
+    const nullQueryListAll = textResult<{ nodes: { id: string }[] }>(await client.callTool({ name: "search_graph", arguments: { query: null } }));
+    expect(nullQueryListAll.nodes.some(node => node.id === created.record.id)).toBe(true);
+
+    await client.close();
+  });
+
+  test("wires MCP update, delete, type, context, history, and export tools", async () => {
+    const base = await start();
+    await request(base, "/api/admin/seed/bootstrap", { method: "POST", body: "{}" });
+    const client = await connectMcpClient(base);
+
+    const firstGraph = await request<{ version: number }>(base, "/api/graph");
+    const createdNode = textResult<{ version: number; record: { id: string } }>(
+      await client.callTool({
+        name: "create_node",
+        arguments: { expectedVersion: String(firstGraph.version), id: null, name: "MCP Alpha", typeId: "person", description: null, metadata: null },
+      }),
+    );
+    const updatedNode = textResult<{ version: number; record: { id: string; name: string } }>(
+      await client.callTool({ name: "update_node", arguments: { expectedVersion: String(createdNode.version), id: createdNode.record.id, name: "MCP Alpha Updated" } }),
+    );
+    expect(updatedNode.record.name).toBe("MCP Alpha Updated");
+
+    const secondNode = textResult<{ version: number; record: { id: string } }>(
+      await client.callTool({ name: "create_node", arguments: { expectedVersion: updatedNode.version, name: "MCP Beta", typeId: "project" } }),
+    );
+    const edge = textResult<{ version: number; record: { id: string; description: string } }>(
+      await client.callTool({
+        name: "create_edge",
+        arguments: {
+          expectedVersion: secondNode.version,
+          typeId: "works-on",
+          sourceNodeId: createdNode.record.id,
+          targetNodeId: secondNode.record.id,
+          direction: "directed",
+          description: null,
+          metadata: null,
         },
       }),
-    });
+    );
+    const updatedEdge = textResult<{ version: number; record: { id: string; description: string } }>(
+      await client.callTool({ name: "update_edge", arguments: { expectedVersion: edge.version, id: edge.record.id, description: "MCP edge updated" } }),
+    );
+    expect(updatedEdge.record.description).toBe("MCP edge updated");
 
-    const search = await request<{ result: { nodes: { id: string }[] } }>(base, "/mcp", {
-      method: "POST",
-      body: JSON.stringify({ tool: "search_graph", args: { query: "MCP Node" } }),
-    });
+    const context = textResult<{ node: { id: string }; edges: { id: string }[] }>(
+      await client.callTool({ name: "get_node_context", arguments: { nodeId: createdNode.record.id } }),
+    );
+    expect(context.node.id).toBe(createdNode.record.id);
+    expect(context.edges.some(candidate => candidate.id === edge.record.id)).toBe(true);
 
-    expect(search.result.nodes[0]?.id).toBe(created.result.record.id);
+    const deletedEdge = textResult<{ version: number; deletedId: string }>(
+      await client.callTool({ name: "delete_edge", arguments: { expectedVersion: updatedEdge.version, id: edge.record.id } }),
+    );
+    expect(deletedEdge.deletedId).toBe(edge.record.id);
+    const deletedNode = textResult<{ version: number; deletedId: string }>(
+      await client.callTool({ name: "delete_node", arguments: { expectedVersion: deletedEdge.version, id: secondNode.record.id } }),
+    );
+    expect(deletedNode.deletedId).toBe(secondNode.record.id);
+
+    const nodeType = textResult<{ version: number; record: { id: string; name: string } }>(
+      await client.callTool({ name: "create_node_type", arguments: { expectedVersion: deletedNode.version, id: null, name: "MCP Temp Type", metadataSchema: null } }),
+    );
+    const updatedNodeType = textResult<{ version: number; record: { id: string; description: string } }>(
+      await client.callTool({
+        name: "update_node_type",
+        arguments: { expectedVersion: nodeType.version, id: nodeType.record.id, description: "Temporary MCP node type" },
+      }),
+    );
+    expect(updatedNodeType.record.description).toBe("Temporary MCP node type");
+    const deletedNodeType = textResult<{ version: number; deletedId: string }>(
+      await client.callTool({ name: "delete_node_type", arguments: { expectedVersion: updatedNodeType.version, id: nodeType.record.id } }),
+    );
+    expect(deletedNodeType.deletedId).toBe(nodeType.record.id);
+
+    const edgeType = textResult<{ version: number; record: { id: string; name: string } }>(
+      await client.callTool({ name: "create_edge_type", arguments: { expectedVersion: deletedNodeType.version, name: "MCP Temp Edge Type" } }),
+    );
+    const updatedEdgeType = textResult<{ version: number; record: { id: string; description: string } }>(
+      await client.callTool({
+        name: "update_edge_type",
+        arguments: { expectedVersion: edgeType.version, id: edgeType.record.id, description: "Temporary MCP edge type" },
+      }),
+    );
+    expect(updatedEdgeType.record.description).toBe("Temporary MCP edge type");
+    const deletedEdgeType = textResult<{ version: number; deletedId: string }>(
+      await client.callTool({ name: "delete_edge_type", arguments: { expectedVersion: updatedEdgeType.version, id: edgeType.record.id } }),
+    );
+    expect(deletedEdgeType.deletedId).toBe(edgeType.record.id);
+
+    const history = textResult<{ version: number }[]>(await client.callTool({ name: "get_history", arguments: {} }));
+    expect(history.some(change => change.version === deletedEdgeType.version)).toBe(true);
+    const exported = textResult<{ history: { version: number }[]; tombstones: { nodeTypes: { id: string }[]; edgeTypes: { id: string }[] } }>(
+      await client.callTool({ name: "export_graph", arguments: {} }),
+    );
+    expect(exported.history.some(change => change.version === deletedEdgeType.version)).toBe(true);
+    expect(exported.tombstones.nodeTypes.some(candidate => candidate.id === nodeType.record.id)).toBe(true);
+    expect(exported.tombstones.edgeTypes.some(candidate => candidate.id === edgeType.record.id)).toBe(true);
+
+    await client.close();
+  });
+
+  test("returns client-compatible MCP tool errors and broadcasts MCP mutations", async () => {
+    const base = await start();
+    const socketBase = base.replace("http://", "ws://").replace("https://", "wss://");
+    const socket = new WebSocket(`${socketBase}/api/realtime`);
+    const messages: string[] = [];
+    socket.addEventListener("message", event => messages.push(String(event.data)));
+    await new Promise(resolve => socket.addEventListener("open", resolve, { once: true }));
+
+    await request(base, "/api/admin/seed/bootstrap", { method: "POST", body: "{}" });
+    const graph = await request<{ version: number }>(base, "/api/graph");
+    const client = await connectMcpClient(base);
+
+    const stale = await client.callTool({ name: "create_node", arguments: { expectedVersion: 0, name: "Stale MCP Node", typeId: "person" } });
+    expect("isError" in stale && stale.isError).toBe(true);
+    const staleError = textResult<{ code: string }>(stale);
+    expect(staleError.code).toBe("CONFLICT");
+
+    const missingVersion = await client.callTool({ name: "create_node", arguments: { name: "Missing Version", typeId: "person" } });
+    expect("isError" in missingVersion && missingVersion.isError).toBe(true);
+    expect(resultText(missingVersion)).toContain("expectedVersion");
+
+    await client.callTool({ name: "create_node", arguments: { expectedVersion: graph.version, name: "Broadcast MCP Node", typeId: "person" } });
+    await Bun.sleep(50);
+    expect(messages.some(message => message.includes("graph.changed") && message.includes("node"))).toBe(true);
+
+    const unknown = await client.callTool({ name: "unknown_link_tool", arguments: {} });
+    expect("isError" in unknown && unknown.isError).toBe(true);
+    expect(resultText(unknown)).toContain("not found");
+    await client.close();
+    socket.close();
   });
 });

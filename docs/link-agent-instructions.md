@@ -1,6 +1,6 @@
 # Link agent instructions
 
-Use these instructions when an agent interacts with Link through the MCP tools or deterministic HTTP API.
+Use these instructions when an agent interacts with Link through the standard MCP server at `/mcp` or the deterministic HTTP API.
 
 ## Required workflow
 
@@ -24,6 +24,13 @@ Use these instructions when an agent interacts with Link through the MCP tools o
 - Type management: `create_node_type`, `update_node_type`, `delete_node_type`, `create_edge_type`, `update_edge_type`, `delete_edge_type`.
 - Node management: `create_node`, `update_node`, `delete_node`.
 - Edge management: `create_edge`, `update_edge`, `delete_edge`.
+
+## MCP connection
+
+- Connect MCP clients to the Streamable HTTP endpoint at `/mcp`.
+- Discover tools with standard MCP `tools/list`.
+- Invoke tools with standard MCP `tools/call`; tool results are returned as JSON text content and structured content when supported by the client.
+- Do not use legacy direct `{ "tool": "...", "args": ... }` JSON payloads; the server expects MCP protocol traffic from a compatible client.
 
 ## Safety rules
 
