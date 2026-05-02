@@ -1,7 +1,7 @@
 import { Database } from "bun:sqlite";
 import { mkdirSync } from "fs";
 import path from "path";
-import { conflictError, notFoundError, validationError } from "../domain/errors";
+import { validationError } from "../domain/errors";
 import { createId } from "../domain/ids";
 import { parseMetadata, parseMetadataSchema } from "../domain/metadata";
 import { materializeBootstrapTypes } from "../domain/seed";
@@ -92,6 +92,110 @@ function stringify(value: unknown): string {
 
 function parseJson<T>(value: string): T {
   return JSON.parse(value) as T;
+}
+
+function isJsonObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function validateImportString(value: unknown, field: string): string {
+  if (typeof value !== "string") throw validationError("Import record field must be a string.", { field, value });
+  return value;
+}
+
+function validateImportDeletedAt(value: unknown, field: string): string | null {
+  if (value !== null && typeof value !== "string") {
+    throw validationError("Import record deletedAt must be a string or null.", { field, value });
+  }
+  return value;
+}
+
+function validateImportObject(value: unknown, field: string): Record<string, unknown> {
+  if (!isJsonObject(value)) throw validationError("Import record field must be an object.", { field, value });
+  return value;
+}
+
+function validateImportArray<T>(value: unknown, field: string, validate: (record: Record<string, unknown>, field: string) => T): T[] {
+  if (!Array.isArray(value)) throw validationError("Import payload array is required.", { field, value });
+  return value.map((record, index) => {
+    if (!isJsonObject(record)) throw validationError("Import payload records must be objects.", { field, index, record });
+    return validate(record, `${field}[${index}]`);
+  });
+}
+
+function validateImportedType(record: Record<string, unknown>, field: string): NodeTypeDefinition {
+  return {
+    id: validateImportString(record.id, `${field}.id`),
+    name: validateImportString(record.name, `${field}.name`),
+    description: validateImportString(record.description, `${field}.description`),
+    metadataSchema: parseMetadataSchema(validateImportObject(record.metadataSchema, `${field}.metadataSchema`)),
+    createdAt: validateImportString(record.createdAt, `${field}.createdAt`),
+    updatedAt: validateImportString(record.updatedAt, `${field}.updatedAt`),
+    deletedAt: validateImportDeletedAt(record.deletedAt, `${field}.deletedAt`),
+  };
+}
+
+function validateImportedNode(record: Record<string, unknown>, field: string): GraphNode {
+  return {
+    id: validateImportString(record.id, `${field}.id`),
+    name: validateImportString(record.name, `${field}.name`),
+    typeId: validateImportString(record.typeId, `${field}.typeId`),
+    description: validateImportString(record.description, `${field}.description`),
+    metadata: parseMetadata(validateImportObject(record.metadata, `${field}.metadata`)),
+    createdAt: validateImportString(record.createdAt, `${field}.createdAt`),
+    updatedAt: validateImportString(record.updatedAt, `${field}.updatedAt`),
+    deletedAt: validateImportDeletedAt(record.deletedAt, `${field}.deletedAt`),
+  };
+}
+
+function validateImportedEdge(record: Record<string, unknown>, field: string): GraphEdge {
+  const direction = validateImportString(record.direction, `${field}.direction`);
+  if (direction !== "directed" && direction !== "bidirectional") {
+    throw validationError("Import edge direction must be directed or bidirectional.", { field: `${field}.direction`, direction });
+  }
+  return {
+    id: validateImportString(record.id, `${field}.id`),
+    typeId: validateImportString(record.typeId, `${field}.typeId`),
+    sourceNodeId: validateImportString(record.sourceNodeId, `${field}.sourceNodeId`),
+    targetNodeId: validateImportString(record.targetNodeId, `${field}.targetNodeId`),
+    direction,
+    description: validateImportString(record.description, `${field}.description`),
+    metadata: parseMetadata(validateImportObject(record.metadata, `${field}.metadata`)),
+    createdAt: validateImportString(record.createdAt, `${field}.createdAt`),
+    updatedAt: validateImportString(record.updatedAt, `${field}.updatedAt`),
+    deletedAt: validateImportDeletedAt(record.deletedAt, `${field}.deletedAt`),
+  };
+}
+
+function validateImportPayload(payload: FullGraphExport): {
+  nodeTypes: NodeTypeDefinition[];
+  edgeTypes: EdgeTypeDefinition[];
+  nodes: GraphNode[];
+  edges: GraphEdge[];
+} {
+  if (!isJsonObject(payload)) throw validationError("Import payload is not a valid graph export.");
+  const tombstones = payload.tombstones;
+  if (tombstones !== undefined && !isJsonObject(tombstones)) {
+    throw validationError("Import tombstones must be an object.", { tombstones });
+  }
+  return {
+    nodeTypes: [
+      ...validateImportArray(payload.nodeTypes, "nodeTypes", validateImportedType),
+      ...(tombstones ? validateImportArray(tombstones.nodeTypes, "tombstones.nodeTypes", validateImportedType) : []),
+    ],
+    edgeTypes: [
+      ...validateImportArray(payload.edgeTypes, "edgeTypes", validateImportedType),
+      ...(tombstones ? validateImportArray(tombstones.edgeTypes, "tombstones.edgeTypes", validateImportedType) : []),
+    ],
+    nodes: [
+      ...validateImportArray(payload.nodes, "nodes", validateImportedNode),
+      ...(tombstones ? validateImportArray(tombstones.nodes, "tombstones.nodes", validateImportedNode) : []),
+    ],
+    edges: [
+      ...validateImportArray(payload.edges, "edges", validateImportedEdge),
+      ...(tombstones ? validateImportArray(tombstones.edges, "tombstones.edges", validateImportedEdge) : []),
+    ],
+  };
 }
 
 function mapNodeType(row: TypeRow): NodeTypeDefinition {
@@ -533,7 +637,8 @@ export class SqliteGraphRepository implements GraphRepository {
         this.db.query("UPDATE edges SET deleted_at = ?, updated_at = ? WHERE id = ?").run(deletedAt, deletedAt, edge.id);
       }
       const version = this.nextVersion();
-      this.recordChange(version, options.actor, "delete", "node", id, { node: before, connectedEdges }, { ...before, deletedAt });
+      const after: GraphNode = { ...before, deletedAt, updatedAt: deletedAt };
+      this.recordChange(version, options.actor, "delete", "node", id, { node: before, connectedEdges }, { node: after, connectedEdges });
       return { version, deletedId: id };
     })();
   }
@@ -641,20 +746,24 @@ export class SqliteGraphRepository implements GraphRepository {
     return this.db.transaction(() => {
       const existing = this.getSnapshot();
       const seed = materializeBootstrapTypes();
+      const existingNodeTypeIds = new Set(this.allNodeTypes(true).map(type => type.id));
+      const existingEdgeTypeIds = new Set(this.allEdgeTypes(true).map(type => type.id));
       let changed = false;
       for (const type of seed.nodeTypes) {
-        if (!this.allNodeTypes(true).some(existingType => existingType.id === type.id)) {
+        if (!existingNodeTypeIds.has(type.id)) {
           this.db
             .query("INSERT INTO node_types VALUES (?, ?, ?, ?, ?, ?, ?)")
             .run(type.id, type.name, type.description, stringify(type.metadataSchema), nowIso(), nowIso(), null);
+          existingNodeTypeIds.add(type.id);
           changed = true;
         }
       }
       for (const type of seed.edgeTypes) {
-        if (!this.allEdgeTypes(true).some(existingType => existingType.id === type.id)) {
+        if (!existingEdgeTypeIds.has(type.id)) {
           this.db
             .query("INSERT INTO edge_types VALUES (?, ?, ?, ?, ?, ?, ?)")
             .run(type.id, type.name, type.description, stringify(type.metadataSchema), nowIso(), nowIso(), null);
+          existingEdgeTypeIds.add(type.id);
           changed = true;
         }
       }
@@ -683,31 +792,25 @@ export class SqliteGraphRepository implements GraphRepository {
 
   importGraph(payload: FullGraphExport, actor: Actor): GraphSnapshot {
     return this.db.transaction(() => {
-      if (!payload || typeof payload !== "object" || !Array.isArray(payload.nodeTypes) || !Array.isArray(payload.edgeTypes)) {
-        throw validationError("Import payload is not a valid graph export.");
-      }
+      const imported = validateImportPayload(payload);
       const before = this.exportGraph();
       this.db.exec("DELETE FROM changes; DELETE FROM edges; DELETE FROM nodes; DELETE FROM edge_types; DELETE FROM node_types;");
-      const nodeTypes = [...payload.nodeTypes, ...(payload.tombstones?.nodeTypes ?? [])];
-      const edgeTypes = [...payload.edgeTypes, ...(payload.tombstones?.edgeTypes ?? [])];
-      const nodes = [...payload.nodes, ...(payload.tombstones?.nodes ?? [])];
-      const edges = [...payload.edges, ...(payload.tombstones?.edges ?? [])];
-      for (const type of nodeTypes) {
+      for (const type of imported.nodeTypes) {
         this.db
           .query("INSERT INTO node_types VALUES (?, ?, ?, ?, ?, ?, ?)")
           .run(type.id, type.name, type.description, stringify(type.metadataSchema), type.createdAt, type.updatedAt, type.deletedAt);
       }
-      for (const type of edgeTypes) {
+      for (const type of imported.edgeTypes) {
         this.db
           .query("INSERT INTO edge_types VALUES (?, ?, ?, ?, ?, ?, ?)")
           .run(type.id, type.name, type.description, stringify(type.metadataSchema), type.createdAt, type.updatedAt, type.deletedAt);
       }
-      for (const node of nodes) {
+      for (const node of imported.nodes) {
         this.db
           .query("INSERT INTO nodes VALUES (?, ?, ?, ?, ?, ?, ?, ?)")
           .run(node.id, node.name, node.typeId, node.description, stringify(node.metadata), node.createdAt, node.updatedAt, node.deletedAt);
       }
-      for (const edge of edges) {
+      for (const edge of imported.edges) {
         this.db
           .query("INSERT INTO edges VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")
           .run(
@@ -729,17 +832,4 @@ export class SqliteGraphRepository implements GraphRepository {
       return this.getSnapshot();
     })();
   }
-
-  requireActiveEdgeForTypeDelete(typeId: string): void {
-    const snapshot = this.getSnapshot();
-    const activeEdge = snapshot.edges.find(edge => edge.typeId === typeId);
-    if (activeEdge) throw conflictError("Active edge uses this type.", { typeId, edgeId: activeEdge.id });
-  }
-
-  requireRecordExists(kind: "node" | "edge", id: string): void {
-    if (kind === "node") findActiveNode(this.getSnapshot(), id);
-    if (kind === "edge") findActiveEdge(this.getSnapshot(), id);
-    if (kind !== "node" && kind !== "edge") throw notFoundError("Unsupported record kind.", { kind });
-  }
 }
-

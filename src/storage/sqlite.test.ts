@@ -62,5 +62,39 @@ describe("SqliteGraphRepository", () => {
     source.close();
     target.close();
   });
-});
 
+  test("rejects malformed import payload arrays before modifying storage", () => {
+    const source = repo();
+    source.seedBootstrap(actor);
+    const exported = source.exportGraph();
+
+    const target = repo();
+    target.seedBootstrap(actor);
+    const beforeVersion = target.getSnapshot().version;
+    const malformed = {
+      ...exported,
+      nodes: {},
+      tombstones: { nodeTypes: [], edgeTypes: [], nodes: [], edges: [] },
+    };
+
+    expect(() => target.importGraph(malformed as unknown as typeof exported, actor)).toThrow(GraphError);
+    expect(target.getSnapshot().version).toBe(beforeVersion);
+    source.close();
+    target.close();
+  });
+
+  test("records node delete history with aligned before and after snapshots", () => {
+    const storage = repo();
+    storage.seedBootstrap(actor);
+    const node = storage.createNode({ name: "History node", typeId: "person" }, { expectedVersion: 1, actor });
+    const deleted = storage.deleteNode(node.record.id, { expectedVersion: node.version, actor });
+    const change = storage.getHistoryVersion(deleted.version);
+
+    expect(change?.before).toMatchObject({ node: { id: node.record.id, deletedAt: null }, connectedEdges: [] });
+    expect(change?.after).toMatchObject({ node: { id: node.record.id }, connectedEdges: [] });
+    const afterNode = (change?.after as { node?: { deletedAt?: string | null; updatedAt?: string } }).node;
+    expect(afterNode?.deletedAt).toBeString();
+    expect(afterNode?.updatedAt).toBe(afterNode?.deletedAt);
+    storage.close();
+  });
+});

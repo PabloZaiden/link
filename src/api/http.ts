@@ -1,8 +1,8 @@
 import { GraphError } from "../domain/errors";
-import type { Actor, FullGraphExport, WriteOptions } from "../domain/types";
+import type { Actor, EdgeDirection, FullGraphExport, Metadata, MetadataSchema, WriteOptions } from "../domain/types";
 import type { AuthProvider } from "../auth/actor";
 import type { RealtimeHub } from "../realtime/hub";
-import type { GraphRepository } from "../storage/repository";
+import type { EdgeInput, GraphRepository, NodeInput, TypeInput } from "../storage/repository";
 import type { AppConfig } from "../server/config";
 
 interface JsonMap {
@@ -25,20 +25,113 @@ function errorResponse(error: unknown): Response {
 async function readJson(request: Request): Promise<JsonMap> {
   const text = await request.text();
   if (!text.trim()) return {};
-  const value = JSON.parse(text) as unknown;
-  if (typeof value !== "object" || value === null || Array.isArray(value)) return {};
+  let value: unknown;
+  try {
+    value = JSON.parse(text) as unknown;
+  } catch (error) {
+    if (error instanceof SyntaxError) {
+      throw new GraphError("VALIDATION", "Request body must be valid JSON.");
+    }
+    throw error;
+  }
+  if (!isJsonMap(value)) throw new GraphError("VALIDATION", "Request body must be a JSON object.");
   return value as JsonMap;
 }
 
-function expectedVersionFrom(request: Request, body: JsonMap): number {
-  const fromBody = body.expectedVersion;
-  const fromQuery = new URL(request.url).searchParams.get("expectedVersion");
-  const value = fromBody ?? fromQuery;
+function isJsonMap(value: unknown): value is JsonMap {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function optionalString(body: JsonMap, field: string): string | undefined {
+  const value = body[field];
+  if (value === undefined || value === null) return undefined;
+  if (typeof value !== "string") throw new GraphError("VALIDATION", `${field} must be a string.`, { field, value });
+  return value;
+}
+
+function requiredString(body: JsonMap, field: string): string {
+  const value = optionalString(body, field);
+  if (value === undefined) throw new GraphError("VALIDATION", `${field} is required.`, { field });
+  return value;
+}
+
+function optionalObject<T extends JsonMap>(body: JsonMap, field: string): T | undefined {
+  const value = body[field];
+  if (value === undefined || value === null) return undefined;
+  if (!isJsonMap(value)) throw new GraphError("VALIDATION", `${field} must be an object.`, { field, value });
+  return value as T;
+}
+
+function requiredDirection(body: JsonMap): EdgeDirection {
+  const direction = requiredString(body, "direction");
+  if (direction !== "directed" && direction !== "bidirectional") {
+    throw new GraphError("VALIDATION", "direction must be directed or bidirectional.", { direction });
+  }
+  return direction;
+}
+
+function optionalDirection(body: JsonMap): EdgeDirection | undefined {
+  const direction = optionalString(body, "direction");
+  if (direction === undefined) return undefined;
+  if (direction !== "directed" && direction !== "bidirectional") {
+    throw new GraphError("VALIDATION", "direction must be directed or bidirectional.", { direction });
+  }
+  return direction;
+}
+
+function parseTypeInput(body: JsonMap, partial = false): Partial<TypeInput> | TypeInput {
+  const input: Partial<TypeInput> = {
+    id: optionalString(body, "id"),
+    name: partial ? optionalString(body, "name") : requiredString(body, "name"),
+    description: optionalString(body, "description"),
+    metadataSchema: optionalObject<MetadataSchema>(body, "metadataSchema"),
+  };
+  return input;
+}
+
+function parseNodeInput(body: JsonMap, partial = false): Partial<NodeInput> | NodeInput {
+  const input: Partial<NodeInput> = {
+    id: optionalString(body, "id"),
+    name: partial ? optionalString(body, "name") : requiredString(body, "name"),
+    typeId: partial ? optionalString(body, "typeId") : requiredString(body, "typeId"),
+    description: optionalString(body, "description"),
+    metadata: optionalObject<Metadata>(body, "metadata"),
+  };
+  return input;
+}
+
+function parseEdgeInput(body: JsonMap, partial = false): Partial<EdgeInput> | EdgeInput {
+  const input: Partial<EdgeInput> = {
+    id: optionalString(body, "id"),
+    typeId: partial ? optionalString(body, "typeId") : requiredString(body, "typeId"),
+    sourceNodeId: partial ? optionalString(body, "sourceNodeId") : requiredString(body, "sourceNodeId"),
+    targetNodeId: partial ? optionalString(body, "targetNodeId") : requiredString(body, "targetNodeId"),
+    direction: partial ? optionalDirection(body) : requiredDirection(body),
+    description: optionalString(body, "description"),
+    metadata: optionalObject<Metadata>(body, "metadata"),
+  };
+  return input;
+}
+
+function requiredId(args: JsonMap, field = "id"): string {
+  return requiredString(args, field);
+}
+
+function expectedVersionFromValue(value: unknown): number {
+  if (value === undefined || value === null || value === "") {
+    throw new GraphError("VALIDATION", "Mutations require a non-negative integer expectedVersion.", { expectedVersion: value });
+  }
   const version = Number(value);
   if (!Number.isInteger(version) || version < 0) {
     throw new GraphError("VALIDATION", "Mutations require a non-negative integer expectedVersion.", { expectedVersion: value });
   }
   return version;
+}
+
+function expectedVersionFrom(request: Request, body: JsonMap): number {
+  const fromBody = body.expectedVersion;
+  const fromQuery = new URL(request.url).searchParams.get("expectedVersion");
+  return expectedVersionFromValue(fromBody ?? fromQuery);
 }
 
 function writeOptions(request: Request, body: JsonMap, auth: AuthProvider): WriteOptions {
@@ -83,11 +176,13 @@ export function createRoutes(deps: {
       const body = await readJson(request);
       const options = writeOptions(request, body, auth);
       if (operation === "create") {
-        return mutation(() => repository.createNodeType(body, options), realtime, "nodeType", "create");
+        const input = parseTypeInput(body) as TypeInput;
+        return mutation(() => repository.createNodeType(input, options), realtime, "nodeType", "create");
       }
       if (!id) throw new GraphError("VALIDATION", "Node type ID is required.");
       if (operation === "update") {
-        return mutation(() => repository.updateNodeType(id, body, options), realtime, "nodeType", "update");
+        const input = parseTypeInput(body, true);
+        return mutation(() => repository.updateNodeType(id, input, options), realtime, "nodeType", "update");
       }
       return mutation(() => repository.deleteNodeType(id, options), realtime, "nodeType", "delete");
     } catch (error) {
@@ -104,11 +199,13 @@ export function createRoutes(deps: {
       const body = await readJson(request);
       const options = writeOptions(request, body, auth);
       if (operation === "create") {
-        return mutation(() => repository.createEdgeType(body, options), realtime, "edgeType", "create");
+        const input = parseTypeInput(body) as TypeInput;
+        return mutation(() => repository.createEdgeType(input, options), realtime, "edgeType", "create");
       }
       if (!id) throw new GraphError("VALIDATION", "Edge type ID is required.");
       if (operation === "update") {
-        return mutation(() => repository.updateEdgeType(id, body, options), realtime, "edgeType", "update");
+        const input = parseTypeInput(body, true);
+        return mutation(() => repository.updateEdgeType(id, input, options), realtime, "edgeType", "update");
       }
       return mutation(() => repository.deleteEdgeType(id, options), realtime, "edgeType", "delete");
     } catch (error) {
@@ -120,9 +217,15 @@ export function createRoutes(deps: {
     try {
       const body = await readJson(request);
       const options = writeOptions(request, body, auth);
-      if (operation === "create") return mutation(() => repository.createNode(body, options), realtime, "node", "create");
+      if (operation === "create") {
+        const input = parseNodeInput(body) as NodeInput;
+        return mutation(() => repository.createNode(input, options), realtime, "node", "create");
+      }
       if (!id) throw new GraphError("VALIDATION", "Node ID is required.");
-      if (operation === "update") return mutation(() => repository.updateNode(id, body, options), realtime, "node", "update");
+      if (operation === "update") {
+        const input = parseNodeInput(body, true);
+        return mutation(() => repository.updateNode(id, input, options), realtime, "node", "update");
+      }
       return mutation(() => repository.deleteNode(id, options), realtime, "node", "delete");
     } catch (error) {
       return errorResponse(error);
@@ -133,9 +236,15 @@ export function createRoutes(deps: {
     try {
       const body = await readJson(request);
       const options = writeOptions(request, body, auth);
-      if (operation === "create") return mutation(() => repository.createEdge(body, options), realtime, "edge", "create");
+      if (operation === "create") {
+        const input = parseEdgeInput(body) as EdgeInput;
+        return mutation(() => repository.createEdge(input, options), realtime, "edge", "create");
+      }
       if (!id) throw new GraphError("VALIDATION", "Edge ID is required.");
-      if (operation === "update") return mutation(() => repository.updateEdge(id, body, options), realtime, "edge", "update");
+      if (operation === "update") {
+        const input = parseEdgeInput(body, true);
+        return mutation(() => repository.updateEdge(id, input, options), realtime, "edge", "update");
+      }
       return mutation(() => repository.deleteEdge(id, options), realtime, "edge", "delete");
     } catch (error) {
       return errorResponse(error);
@@ -173,8 +282,11 @@ export function createRoutes(deps: {
         });
       }
       const toolName = body.method === "tools/call" ? (body.params as JsonMap | undefined)?.name : body.tool;
-      const args = (body.method === "tools/call" ? (body.params as JsonMap | undefined)?.arguments : body.args) as JsonMap | undefined;
-      const result = callTool(String(toolName), args ?? {}, request);
+      if (typeof toolName !== "string") throw new GraphError("VALIDATION", "MCP tool name must be a string.", { toolName });
+      const rawArgs = body.method === "tools/call" ? (body.params as JsonMap | undefined)?.arguments : body.args;
+      const args = rawArgs === undefined ? {} : rawArgs;
+      if (!isJsonMap(args)) throw new GraphError("VALIDATION", "MCP tool arguments must be an object.", { args });
+      const result = callTool(toolName, args, request);
       if (body.jsonrpc === "2.0") return json({ jsonrpc: "2.0", id: body.id, result });
       return json({ result });
     } catch (error) {
@@ -205,41 +317,49 @@ export function createRoutes(deps: {
       case "export_graph":
         return repository.exportGraph();
       case "create_node_type":
-        return mutate("nodeType", "create", () => repository.createNodeType(args, { expectedVersion: Number(args.expectedVersion), actor }));
+        return mutate("nodeType", "create", () =>
+          repository.createNodeType(parseTypeInput(args) as TypeInput, { expectedVersion: expectedVersionFromValue(args.expectedVersion), actor }),
+        );
       case "update_node_type":
         return mutate("nodeType", "update", () =>
-          repository.updateNodeType(String(args.id ?? ""), args, { expectedVersion: Number(args.expectedVersion), actor }),
+          repository.updateNodeType(requiredId(args), parseTypeInput(args, true), { expectedVersion: expectedVersionFromValue(args.expectedVersion), actor }),
         );
       case "delete_node_type":
         return mutate("nodeType", "delete", () =>
-          repository.deleteNodeType(String(args.id ?? ""), { expectedVersion: Number(args.expectedVersion), actor }),
+          repository.deleteNodeType(requiredId(args), { expectedVersion: expectedVersionFromValue(args.expectedVersion), actor }),
         );
       case "create_edge_type":
-        return mutate("edgeType", "create", () => repository.createEdgeType(args, { expectedVersion: Number(args.expectedVersion), actor }));
+        return mutate("edgeType", "create", () =>
+          repository.createEdgeType(parseTypeInput(args) as TypeInput, { expectedVersion: expectedVersionFromValue(args.expectedVersion), actor }),
+        );
       case "update_edge_type":
         return mutate("edgeType", "update", () =>
-          repository.updateEdgeType(String(args.id ?? ""), args, { expectedVersion: Number(args.expectedVersion), actor }),
+          repository.updateEdgeType(requiredId(args), parseTypeInput(args, true), { expectedVersion: expectedVersionFromValue(args.expectedVersion), actor }),
         );
       case "delete_edge_type":
         return mutate("edgeType", "delete", () =>
-          repository.deleteEdgeType(String(args.id ?? ""), { expectedVersion: Number(args.expectedVersion), actor }),
+          repository.deleteEdgeType(requiredId(args), { expectedVersion: expectedVersionFromValue(args.expectedVersion), actor }),
         );
       case "create_node":
-        return mutate("node", "create", () => repository.createNode(args, { expectedVersion: Number(args.expectedVersion), actor }));
+        return mutate("node", "create", () =>
+          repository.createNode(parseNodeInput(args) as NodeInput, { expectedVersion: expectedVersionFromValue(args.expectedVersion), actor }),
+        );
       case "update_node":
         return mutate("node", "update", () =>
-          repository.updateNode(String(args.id ?? ""), args, { expectedVersion: Number(args.expectedVersion), actor }),
+          repository.updateNode(requiredId(args), parseNodeInput(args, true), { expectedVersion: expectedVersionFromValue(args.expectedVersion), actor }),
         );
       case "delete_node":
-        return mutate("node", "delete", () => repository.deleteNode(String(args.id ?? ""), { expectedVersion: Number(args.expectedVersion), actor }));
+        return mutate("node", "delete", () => repository.deleteNode(requiredId(args), { expectedVersion: expectedVersionFromValue(args.expectedVersion), actor }));
       case "create_edge":
-        return mutate("edge", "create", () => repository.createEdge(args, { expectedVersion: Number(args.expectedVersion), actor }));
+        return mutate("edge", "create", () =>
+          repository.createEdge(parseEdgeInput(args) as EdgeInput, { expectedVersion: expectedVersionFromValue(args.expectedVersion), actor }),
+        );
       case "update_edge":
         return mutate("edge", "update", () =>
-          repository.updateEdge(String(args.id ?? ""), args, { expectedVersion: Number(args.expectedVersion), actor }),
+          repository.updateEdge(requiredId(args), parseEdgeInput(args, true), { expectedVersion: expectedVersionFromValue(args.expectedVersion), actor }),
         );
       case "delete_edge":
-        return mutate("edge", "delete", () => repository.deleteEdge(String(args.id ?? ""), { expectedVersion: Number(args.expectedVersion), actor }));
+        return mutate("edge", "delete", () => repository.deleteEdge(requiredId(args), { expectedVersion: expectedVersionFromValue(args.expectedVersion), actor }));
       default:
         throw new GraphError("VALIDATION", "Unknown MCP tool.", { name });
     }
@@ -319,8 +439,16 @@ export function createRoutes(deps: {
     "/api/history": { GET: () => json(repository.getHistory()) },
     "/api/history/:version": {
       GET: (request: Request) => {
-        const change = repository.getHistoryVersion(Number(request.params.version));
-        return change ? json(change) : json({ error: { code: "NOT_FOUND", message: "History version not found." } }, { status: 404 });
+        try {
+          const version = Number(request.params.version);
+          if (!Number.isInteger(version) || version < 0) {
+            throw new GraphError("VALIDATION", "History version must be a non-negative integer.", { version: request.params.version });
+          }
+          const change = repository.getHistoryVersion(version);
+          return change ? json(change) : json({ error: { code: "NOT_FOUND", message: "History version not found." } }, { status: 404 });
+        } catch (error) {
+          return errorResponse(error);
+        }
       },
     },
     "/api/export": { GET: () => json(repository.exportGraph()) },

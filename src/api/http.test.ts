@@ -5,14 +5,17 @@ import { createApp } from "../server/app";
 import { SqliteGraphRepository } from "../storage/sqlite";
 
 let server: Server | null = null;
+let repository: SqliteGraphRepository | null = null;
 
 afterEach(() => {
   server?.stop(true);
   server = null;
+  repository?.close();
+  repository = null;
 });
 
 async function start() {
-  const repository = new SqliteGraphRepository(":memory:");
+  repository = new SqliteGraphRepository(":memory:");
   const app = createApp({
     index,
     repository,
@@ -71,6 +74,53 @@ describe("HTTP API", () => {
       body: JSON.stringify({ expectedVersion: 1, name: "Stale", typeId: "person" }),
     });
     expect(staleResponse.status).toBe(409);
+  });
+
+  test("returns validation errors for invalid JSON and malformed mutation bodies", async () => {
+    const base = await start();
+
+    const invalidJson = await fetch(`${base}/api/nodes`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: "{",
+    });
+    expect(invalidJson.status).toBe(400);
+    expect(((await invalidJson.json()) as { error: { code: string } }).error.code).toBe("VALIDATION");
+
+    const seeded = await request<{ version: number }>(base, "/api/admin/seed/bootstrap", { method: "POST", body: "{}" });
+    const malformedNode = await fetch(`${base}/api/nodes`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ expectedVersion: seeded.version, name: 42, typeId: "person" }),
+    });
+    expect(malformedNode.status).toBe(400);
+    expect(((await malformedNode.json()) as { error: { code: string } }).error.code).toBe("VALIDATION");
+
+    const missingVersion = await fetch(`${base}/api/nodes`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ name: "No version", typeId: "person" }),
+    });
+    expect(missingVersion.status).toBe(400);
+    expect(((await missingVersion.json()) as { error: { code: string } }).error.code).toBe("VALIDATION");
+  });
+
+  test("validates history version path parameters", async () => {
+    const base = await start();
+    const response = await fetch(`${base}/api/history/not-a-version`);
+    expect(response.status).toBe(400);
+    expect(((await response.json()) as { error: { code: string } }).error.code).toBe("VALIDATION");
+  });
+
+  test("returns validation errors for malformed import payload arrays", async () => {
+    const base = await start();
+    const response = await fetch(`${base}/api/import`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ nodeTypes: [], edgeTypes: [], nodes: {}, edges: [], tombstones: { nodeTypes: [], edgeTypes: [], nodes: [], edges: [] } }),
+    });
+    expect(response.status).toBe(400);
+    expect(((await response.json()) as { error: { code: string } }).error.code).toBe("VALIDATION");
   });
 
   test("broadcasts realtime mutation events", async () => {

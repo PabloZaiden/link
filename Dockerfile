@@ -20,7 +20,6 @@ ENV ADMIN_ENABLED=false
 
 COPY package.json bun.lock bunfig.toml tsconfig.json build.ts ./
 COPY --from=build /app/node_modules ./node_modules
-COPY --from=build /app/dist ./dist
 COPY src ./src
 
 RUN mkdir -p /data
