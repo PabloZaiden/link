@@ -25,6 +25,14 @@
     @apply border-violet-400/60 bg-violet-950/20;
   }
 
+  button.tab {
+    @apply rounded-full border border-zinc-700 bg-zinc-950 px-4 py-2 text-sm font-semibold text-zinc-300 hover:border-violet-400/40 hover:bg-zinc-900 hover:text-zinc-100;
+  }
+
+  button.tab.active {
+    @apply border-violet-400/60 bg-violet-500/15 text-violet-100;
+  }
+
   input,
   select,
   textarea {
