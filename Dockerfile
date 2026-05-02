@@ -2,7 +2,7 @@ FROM oven/bun:1.3.13 AS build
 
 WORKDIR /app
 
-COPY package.json bun.lock bunfig.toml tsconfig.json build.ts ./
+COPY package.json bun.lock bunfig.toml tsconfig.json bun-env.d.ts build.ts ./
 COPY src ./src
 RUN bun install --frozen-lockfile
 RUN bun run build
@@ -18,7 +18,7 @@ ENV DATABASE_PROVIDER=sqlite
 ENV SQLITE_PATH=/data/link.sqlite
 ENV ADMIN_ENABLED=false
 
-COPY package.json bun.lock bunfig.toml tsconfig.json build.ts ./
+COPY package.json bun.lock bunfig.toml tsconfig.json bun-env.d.ts build.ts ./
 COPY --from=build /app/node_modules ./node_modules
 COPY src ./src
 
