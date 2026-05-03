@@ -40,7 +40,7 @@ jobs:
         run: bun run build
 
       - name: Build standalone binary
-        run: bun build --compile --minify --target=bun-${{ matrix.target }} ./src/index.ts --outfile dist/linkserver-${{ github.ref_name }}-${{ matrix.target }}
+        run: bun run build-binary.ts --target=bun-${{ matrix.target }} --outfile=dist/linkserver-${{ github.ref_name }}-${{ matrix.target }}
 
       - name: Generate checksum
         working-directory: dist
