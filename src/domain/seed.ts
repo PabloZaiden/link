@@ -26,7 +26,13 @@ export const bootstrapNodeTypes: Omit<NodeTypeDefinition, "createdAt" | "updated
   },
   { id: "team", name: "Team", description: "A team or working group.", metadataSchema: {} },
   { id: "other", name: "Other", description: "A flexible fallback type.", metadataSchema: {} },
-  { id: "info", name: "Info", description: "A dated status update or note.", metadataSchema: { date: { type: "date", label: "Date" } } },
+  {
+    id: "status-update",
+    name: "Status Update",
+    description: "An immutable dated update about something in the graph.",
+    immutable: true,
+    metadataSchema: { date: { type: "date", label: "Date", required: true } },
+  },
   { id: "aka", name: "AKA", description: "An alias or alternate name.", metadataSchema: {} },
 ];
 
@@ -38,7 +44,7 @@ export const bootstrapEdgeTypes: Omit<EdgeTypeDefinition, "createdAt" | "updated
   { id: "depends-on", name: "depends on", description: "Dependency relationship.", metadataSchema: {} },
   { id: "knows-about", name: "knows about", description: "Connects a person to a technology or subject.", metadataSchema: {} },
   { id: "alias-of", name: "alias of", description: "Connects an AKA node to its canonical node.", metadataSchema: {} },
-  { id: "status-for", name: "status for", description: "Connects an info/status node to the thing it describes.", metadataSchema: {} },
+  { id: "status-for", name: "status for", description: "Connects a status update node to the thing it describes.", metadataSchema: {} },
 ];
 
 export function materializeBootstrapTypes(): {

@@ -29,12 +29,14 @@ const typeCreateInput: ToolInputShape = {
   id: optionalStringSchema,
   name: z.string().min(1),
   description: optionalStringSchema,
+  immutable: z.boolean().nullish(),
   metadataSchema: optionalJsonObjectSchema,
 };
 const typeUpdateInput: ToolInputShape = {
   ...idInput,
   name: optionalStringSchema,
   description: optionalStringSchema,
+  immutable: z.boolean().nullish(),
   metadataSchema: optionalJsonObjectSchema,
 };
 const nodeCreateInput: ToolInputShape = {

@@ -22,6 +22,7 @@ export interface GraphRecordBase {
 export interface NodeTypeDefinition extends GraphRecordBase {
   name: string;
   description: string;
+  immutable?: boolean;
   metadataSchema: MetadataSchema;
 }
 

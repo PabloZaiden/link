@@ -98,14 +98,18 @@ function orderedRecord(record: NodeTypeDefinition | EdgeTypeDefinition | GraphNo
       updatedAt: record.updatedAt,
     };
   }
-  return {
+  const typeRecord: Record<string, unknown> = {
     id: record.id,
     name: record.name,
     description: record.description,
-    metadataSchema: sortObject(record.metadataSchema),
-    createdAt: record.createdAt,
-    updatedAt: record.updatedAt,
   };
+  if ("immutable" in record && record.immutable === true) {
+    typeRecord.immutable = true;
+  }
+  typeRecord.metadataSchema = sortObject(record.metadataSchema);
+  typeRecord.createdAt = record.createdAt;
+  typeRecord.updatedAt = record.updatedAt;
+  return typeRecord;
 }
 
 function canonicalJson(record: NodeTypeDefinition | EdgeTypeDefinition | GraphNode | GraphEdge): string {
@@ -154,6 +158,7 @@ function parseTypeRecord(record: Record<string, unknown>, filePath: string): Nod
     id,
     name: requiredString(record, "name", filePath),
     description: requiredString(record, "description", filePath),
+    immutable: record.immutable === true ? true : undefined,
     metadataSchema: parseMetadataSchema(record.metadataSchema),
     createdAt: requiredString(record, "createdAt", filePath),
     updatedAt: requiredString(record, "updatedAt", filePath),
@@ -370,6 +375,7 @@ export class JsonGraphRepository implements GraphRepository {
       id: createId({ explicitId: input.id, name: input.name, existingIds: snapshot.nodeTypes.map(type => type.id) }),
       name: input.name.trim(),
       description: input.description?.trim() ?? "",
+      immutable: input.immutable === true ? true : undefined,
       metadataSchema: parseMetadataSchema(input.metadataSchema),
       createdAt: timestamp,
       updatedAt: timestamp,
@@ -385,6 +391,7 @@ export class JsonGraphRepository implements GraphRepository {
       ...before,
       name: input.name?.trim() ?? before.name,
       description: input.description?.trim() ?? before.description,
+      immutable: input.immutable === undefined ? before.immutable : input.immutable === true ? true : undefined,
       metadataSchema: input.metadataSchema === undefined ? before.metadataSchema : parseMetadataSchema(input.metadataSchema),
       updatedAt: nowIso(),
     };
@@ -463,6 +470,10 @@ export class JsonGraphRepository implements GraphRepository {
     this.assertNoIdChange(id, input.id);
     const snapshot = this.getSnapshot();
     const before = findActiveNode(snapshot, id);
+    const beforeType = findActiveNodeType(snapshot, before.typeId);
+    if (beforeType.immutable === true) {
+      throw validationError("Immutable nodes cannot be updated. Create a new node instead.", { id, typeId: before.typeId });
+    }
     const typeId = input.typeId ?? before.typeId;
     findActiveNodeType(snapshot, typeId);
     const metadata = validateNodeMetadata(snapshot, typeId, parseMetadata(input.metadata ?? before.metadata));

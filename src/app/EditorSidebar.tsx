@@ -253,6 +253,10 @@ export function EditorSidebar(props: EditorSidebarProps) {
                     <h3 className="font-semibold">New node type</h3>
                     <input name="id" placeholder="optional-id" />
                     <input name="name" placeholder="Name" required />
+                    <label className="flex min-h-11 items-center gap-2 rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm text-zinc-200">
+                      <input type="checkbox" name="immutable" className="h-4 w-4 rounded border-zinc-600 bg-zinc-900" />
+                      Immutable nodes
+                    </label>
                     <textarea name="description" placeholder="Description" />
                     <textarea name="metadataSchema" placeholder='Schema JSON, e.g. {"status":{"type":"string"}}' />
                     <button>Create node type</button>
@@ -281,6 +285,10 @@ export function EditorSidebar(props: EditorSidebarProps) {
                     <form key={props.selectedNodeType.id} className="mt-3" onSubmit={props.onUpdateNodeType}>
                       <small>ID: {props.selectedNodeType.id}</small>
                       <input name="name" defaultValue={props.selectedNodeType.name} placeholder="Name" required />
+                      <label className="flex min-h-11 items-center gap-2 rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm text-zinc-200">
+                        <input type="checkbox" name="immutable" defaultChecked={props.selectedNodeType.immutable === true} className="h-4 w-4 rounded border-zinc-600 bg-zinc-900" />
+                        Immutable nodes
+                      </label>
                       <textarea name="description" defaultValue={props.selectedNodeType.description} placeholder="Description" />
                       <JsonTextarea name="metadataSchema" defaultValue={props.selectedNodeType.metadataSchema} />
                       <div className="flex flex-wrap gap-2">

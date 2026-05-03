@@ -32,6 +32,8 @@ describe("JsonGraphRepository", () => {
       const storage = new JsonGraphRepository(graphPath, { seed: true });
       const snapshot = storage.getSnapshot();
       expect(snapshot.nodeTypes.some(type => type.id === "person")).toBe(true);
+      expect(snapshot.nodeTypes.find(type => type.id === "status-update")?.immutable).toBe(true);
+      expect(snapshot.nodeTypes.find(type => type.id === "status-update")?.metadataSchema.date?.required).toBe(true);
       expect(snapshot.edgeTypes.some(type => type.id === "works-on")).toBe(true);
       const personPath = path.join(graphPath, "node-types", "person.json");
       expect(existsSync(personPath)).toBe(true);
@@ -105,6 +107,47 @@ describe("JsonGraphRepository", () => {
       restarted.deleteNode(link.record.id);
       expect(restarted.getSnapshot().nodes.some(node => node.id === link.record.id)).toBe(false);
       expect(restarted.getSnapshot().edges.some(candidate => candidate.id === edge.record.id)).toBe(false);
+    } finally {
+      cleanup(graphPath);
+    }
+  });
+
+  test("treats immutable node types as append-only records", () => {
+    const graphPath = tempGraphPath();
+    try {
+      const storage = new JsonGraphRepository(graphPath, { seed: true });
+      const project = storage.createNode({ name: "Link", typeId: "project" });
+      const firstUpdate = storage.createNode({
+        name: "Link status 2026-05-03",
+        typeId: "status-update",
+        description: "Initial status.",
+        metadata: { date: "2026-05-03" },
+      });
+      storage.createEdge({
+        typeId: "status-for",
+        sourceNodeId: firstUpdate.record.id,
+        targetNodeId: project.record.id,
+        direction: "directed",
+      });
+
+      expect(() => storage.updateNode(firstUpdate.record.id, { description: "Edited status." })).toThrow(GraphError);
+
+      const secondUpdate = storage.createNode({
+        name: "Link status 2026-05-04",
+        typeId: "status-update",
+        description: "Follow-up status.",
+        metadata: { date: "2026-05-04" },
+      });
+      storage.createEdge({
+        typeId: "status-for",
+        sourceNodeId: secondUpdate.record.id,
+        targetNodeId: project.record.id,
+        direction: "directed",
+      });
+
+      const context = storage.getContext(project.record.id);
+      const statusUpdateIds = context.nodes.filter(node => node.typeId === "status-update").map(node => node.id).sort();
+      expect(statusUpdateIds).toEqual([firstUpdate.record.id, secondUpdate.record.id].sort());
     } finally {
       cleanup(graphPath);
     }
