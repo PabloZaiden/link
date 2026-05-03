@@ -42,14 +42,20 @@ jobs:
       - name: Build standalone binary
         run: bun build --compile --minify --target=bun-${{ matrix.target }} ./src/index.ts --outfile dist/link-${{ github.ref_name }}-${{ matrix.target }}
 
+      - name: Generate checksum
+        working-directory: dist
+        run: shasum -a 256 link-${{ github.ref_name }}-${{ matrix.target }} > link-${{ github.ref_name }}-${{ matrix.target }}.sha256
+
       - name: Upload workflow artifact
         uses: actions/upload-artifact@v4
         with:
           name: link-${{ github.ref_name }}-${{ matrix.target }}
-          path: dist/link-${{ github.ref_name }}-${{ matrix.target }}
+          path: |
+            dist/link-${{ github.ref_name }}-${{ matrix.target }}
+            dist/link-${{ github.ref_name }}-${{ matrix.target }}.sha256
           if-no-files-found: error
 
       - name: Upload binary to release
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release upload ${{ github.ref_name }} dist/link-${{ github.ref_name }}-${{ matrix.target }} --clobber
+        run: gh release upload ${{ github.ref_name }} dist/link-${{ github.ref_name }}-${{ matrix.target }} dist/link-${{ github.ref_name }}-${{ matrix.target }}.sha256 --clobber
