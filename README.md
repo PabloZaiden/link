@@ -1,6 +1,6 @@
 # Link
 
-Link is a local-first Bun + React graph tracker for flexible work-related entities and relationships. Graph data is stored as canonical, Git-friendly JSON files under `./.data/graph`; Git is the history, collaboration, backup, and conflict-resolution layer.
+Link is a local-first Bun + React graph tracker for flexible work-related entities and relationships. Graph data is stored as canonical, Git-friendly JSON files under `./.data/graph` after the first save; Git is the history, collaboration, backup, and conflict-resolution layer.
 
 ## Features
 
@@ -8,7 +8,7 @@ Link is a local-first Bun + React graph tracker for flexible work-related entiti
 - Directed and bidirectional edges.
 - Metadata schemas for declared fields, while preserving unknown metadata fields.
 - One JSON file per graph record with slug IDs mapped directly to file names.
-- Automatic bootstrap of default node and edge types on first run.
+- Explicit bootstrap of default node and edge types with `--seed`.
 - Deterministic HTTP APIs, realtime WebSocket refresh, and local-only MCP tools.
 - Validation CLI for catching malformed JSON, merge conflicts, and broken references.
 
@@ -21,6 +21,12 @@ bun run dev
 
 Open the app at the printed server URL, usually `http://localhost:3000`.
 
+To create the default node and edge types for an empty graph, start Link once with `--seed`:
+
+```bash
+bun src/index.ts --seed
+```
+
 Common checks:
 
 ```bash
@@ -31,7 +37,7 @@ bun run build
 
 ## Graph storage
 
-The default graph path is `./.data/graph`:
+The default graph path is `./.data/graph`, but Link does not create `.data` or graph collection directories until a mutation saves data or explicit `--seed` bootstrap data is written:
 
 ```text
 .data/
@@ -50,10 +56,12 @@ The default graph path is `./.data/graph`:
 
 Each record is pretty-printed JSON with deterministic top-level key order and a trailing newline. Deletes remove files; Git keeps the historical copy. Link never runs Git commands for you.
 
+If the graph is empty and you want the built-in starter types, run `bun src/index.ts --seed`. Seeding is skipped when any graph JSON records already exist, so it will not backfill defaults into an existing graph.
+
 ## Git workflow
 
 1. `git pull`.
-2. Run Link locally and edit through the UI, HTTP API, or MCP tools.
+2. Run Link locally and edit through the UI, HTTP API, or MCP tools. Use `bun src/index.ts --seed` first only when you want default types in an empty graph.
 3. Inspect JSON changes under `.data/graph`.
 4. `bun src/index.ts --validate`.
 5. `git add .data/graph && git commit`.
@@ -103,6 +111,8 @@ curl -s -X POST http://localhost:3000/api/nodes \
   -d '{"name":"Ada Lovelace","typeId":"person"}'
 ```
 
+This example assumes the `person` node type already exists, either from `--seed` or from creating that type yourself.
+
 ## Realtime updates
 
 Connect a WebSocket client to `/api/realtime`. Successful graph mutations broadcast `graph.changed` events without graph versions. Clients should refetch `/api/graph` after receiving a change event.
@@ -133,4 +143,8 @@ Run with graph data mounted:
 docker run --rm -p 3000:3000 -v "$PWD/.data:/data" link
 ```
 
-Use `LINK_DATA_DIR` if you mount the data directory somewhere else inside the container.
+Use `LINK_DATA_DIR` if you mount the data directory somewhere else inside the container. To seed an empty mounted graph, override the container command explicitly:
+
+```bash
+docker run --rm -p 3000:3000 -v "$PWD/.data:/data" link bun src/index.ts --seed
+```

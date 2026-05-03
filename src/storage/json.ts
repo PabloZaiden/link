@@ -36,8 +36,7 @@ type Collection = "nodeTypes" | "edgeTypes" | "nodes" | "edges";
 type RecordTypeName = "node type" | "edge type" | "node" | "edge";
 
 interface JsonRepositoryOptions {
-  bootstrap?: boolean;
-  createDirectories?: boolean;
+  seed?: boolean;
 }
 
 const collectionDirs: Record<Collection, string> = {
@@ -210,10 +209,7 @@ export class JsonGraphRepository implements GraphRepository {
     private readonly graphPath: string,
     options: JsonRepositoryOptions = {},
   ) {
-    const bootstrap = options.bootstrap ?? true;
-    const createDirectories = options.createDirectories ?? true;
-    if (createDirectories) this.ensureDirectories();
-    if (bootstrap && this.isEmpty()) {
+    if (options.seed === true && this.isEmpty()) {
       this.seedBootstrap();
     } else {
       this.getSnapshot();
@@ -342,6 +338,7 @@ export class JsonGraphRepository implements GraphRepository {
   }
 
   private writeRecord(collection: Collection, record: NodeTypeDefinition | EdgeTypeDefinition | GraphNode | GraphEdge): void {
+    this.ensureDirectories();
     const filePath = this.recordPath(collection, record.id);
     const tempPath = path.join(path.dirname(filePath), `.${path.basename(filePath)}.${process.pid}.${Date.now()}.tmp`);
     writeFileSync(tempPath, canonicalJson(record), "utf8");
@@ -561,6 +558,6 @@ export function validateGraphPath(graphPath: string): GraphSnapshot {
       throw validationError(`Invalid graph data in ${dirPath}: expected a directory.`);
     }
   }
-  const repository = new JsonGraphRepository(graphPath, { bootstrap: false, createDirectories: false });
+  const repository = new JsonGraphRepository(graphPath);
   return repository.getSnapshot();
 }
