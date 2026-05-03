@@ -20,7 +20,7 @@ Install the latest Linux or macOS binary release:
 curl -fsSL https://raw.githubusercontent.com/pablozaiden/link/main/install.sh | sh
 ```
 
-The installer downloads the latest release for your platform and installs it as `link` in `$HOME/.local/bin`. If that directory is not on your `PATH`, the installer prints the shell profile line to add.
+The installer downloads the latest release for your platform and installs it as `linkserver` in `$HOME/.local/bin`. If that directory is not on your `PATH`, the installer prints the shell profile line to add.
 
 ## Local development
 
