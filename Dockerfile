@@ -13,13 +13,13 @@ WORKDIR /app
 
 ENV NODE_ENV=production
 ENV PORT=3000
-ENV LINK_GRAPH_PATH=/data/graph
+ENV LINK_DATA_DIR=/data
 
 COPY package.json bun.lock bunfig.toml tsconfig.json bun-env.d.ts build.ts ./
 COPY --from=build /app/node_modules ./node_modules
 COPY src ./src
 
-RUN mkdir -p /data/graph
+RUN mkdir -p /data
 
 EXPOSE 3000
 

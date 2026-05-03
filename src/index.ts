@@ -4,18 +4,11 @@ import { startApp } from "./server/app";
 import { loadConfig } from "./server/config";
 import { validateGraphPath } from "./storage/json";
 
-function argValue(name: string): string | undefined {
-  const index = Bun.argv.indexOf(name);
-  if (index === -1) return undefined;
-  return Bun.argv[index + 1];
-}
-
 if (Bun.argv.includes("--validate")) {
   const config = loadConfig();
-  const graphPath = argValue("--graph-path") ?? config.graphPath;
   try {
-    validateGraphPath(graphPath);
-    console.log(`Graph data is valid: ${graphPath}`);
+    validateGraphPath(config.graphPath);
+    console.log(`Graph data is valid: ${config.graphPath}`);
     process.exit(0);
   } catch (error) {
     if (error instanceof GraphError) {

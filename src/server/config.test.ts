@@ -7,7 +7,7 @@ describe("loadConfig", () => {
   test("loads defaults", () => {
     const config = loadConfig({});
     expect(config.port).toBe(3000);
-    expect(path.normalize(config.graphPath).endsWith(path.join("data", "graph"))).toBe(true);
+    expect(path.normalize(config.graphPath).endsWith(path.join(".data", "graph"))).toBe(true);
   });
 
   test("uses LINK_PORT when provided", () => {
@@ -25,8 +25,7 @@ describe("loadConfig", () => {
     expect(() => loadConfig({ LINK_PORT: "bad" })).toThrow(GraphError);
   });
 
-  test("uses graph path overrides", () => {
-    expect(loadConfig({ GRAPH_PATH: "/tmp/graph" }).graphPath).toBe("/tmp/graph");
-    expect(loadConfig({ GRAPH_PATH: "/tmp/graph", LINK_GRAPH_PATH: "/tmp/link-graph" }).graphPath).toBe("/tmp/link-graph");
+  test("uses LINK_DATA_DIR for the graph root", () => {
+    expect(loadConfig({ LINK_DATA_DIR: "/tmp/link-data" }).graphPath).toBe(path.join("/tmp/link-data", "graph"));
   });
 });

@@ -13,8 +13,10 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     throw configError("LINK_PORT or PORT must be an integer between 1 and 65535.", { port: portText });
   }
 
+  const dataDir = env.LINK_DATA_DIR ?? path.join(process.cwd(), ".data");
+
   return {
     port,
-    graphPath: env.LINK_GRAPH_PATH ?? env.GRAPH_PATH ?? path.join(process.cwd(), "data", "graph"),
+    graphPath: path.join(dataDir, "graph"),
   };
 }
