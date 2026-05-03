@@ -1,64 +1,70 @@
 # Link
 
-Link is a Bun + React graph tracker for flexible work-related entities and relationships. It stores a small graph of nodes and edges in SQLite, exposes deterministic HTTP APIs, broadcasts realtime graph updates over WebSockets, and includes a standard MCP server for agent workflows.
+Link is a local-first Bun + React graph tracker for flexible work-related entities and relationships. Graph data is stored as canonical, Git-friendly JSON files under `./data/graph`; Git is the history, collaboration, backup, and conflict-resolution layer.
 
 ## Features
 
 - Dynamic node types and edge types.
 - Directed and bidirectional edges.
-- Metadata schemas for declared fields, while preserving unknown metadata fields for flexibility.
-- Slug IDs with collision handling.
-- Optimistic concurrency through required `expectedVersion` values on mutations.
-- Tombstone deletes and append-only history.
-- Full graph seed, import, and export workflows.
-- Web UI for graph creation, search, context inspection, import/export, and structure-aware SVG graph navigation.
-- Realtime refresh through `/api/realtime`.
-- Local no-auth actor mode with future auth boundary.
-- SQLite persistence through `bun:sqlite`.
+- Metadata schemas for declared fields, while preserving unknown metadata fields.
+- One JSON file per graph record with slug IDs mapped directly to file names.
+- Automatic bootstrap of default node and edge types on first run.
+- Deterministic HTTP APIs, realtime WebSocket refresh, and local-only MCP tools.
+- Validation CLI for catching malformed JSON, merge conflicts, and broken references.
 
 ## Local development
 
-Install dependencies:
-
 ```bash
 bun install
-```
-
-Run the development server:
-
-```bash
 bun run dev
 ```
 
 Open the app at the printed server URL, usually `http://localhost:3000`.
 
-Run tests:
+Common checks:
 
 ```bash
+bun src/index.ts --validate --graph-path ./data/graph
 bun test
-```
-
-Build the browser app:
-
-```bash
 bun run build
 ```
 
-Run production mode locally:
+## Graph storage
 
-```bash
-bun start
+The default graph path is `./data/graph`:
+
+```text
+data/
+  graph/
+    node-types/
+      person.json
+      project.json
+    edge-types/
+      works-on.json
+      related-to.json
+    nodes/
+      ada-lovelace.json
+    edges/
+      ada-lovelace-works-on-link.json
 ```
+
+Each record is pretty-printed JSON with deterministic top-level key order and a trailing newline. Deletes remove files; Git keeps the historical copy. Link never runs Git commands for you.
+
+## Git workflow
+
+1. `git pull`.
+2. Run Link locally and edit through the UI, HTTP API, or MCP tools.
+3. Inspect JSON changes under `data/graph`.
+4. `bun src/index.ts --validate --graph-path ./data/graph`.
+5. `git add data/graph && git commit`.
+6. `git pull --rebase` or merge, resolve JSON conflicts, re-run validation, then push.
 
 ## Configuration
 
 | Variable | Default | Description |
 | --- | --- | --- |
-| `PORT` | `3000` | HTTP server port. |
-| `AUTH_MODE` | `none` | Current auth mode. Only `none` is implemented. |
-| `DATABASE_PROVIDER` | `sqlite` | Current database provider. Only `sqlite` is implemented. |
-| `SQLITE_PATH` | `.data/link.sqlite` in development, `/data/link.sqlite` in production | SQLite database path. |
-| `ADMIN_ENABLED` | `true` outside production, `false` in production | Enables admin seed endpoint. |
+| `PORT` / `LINK_PORT` | `3000` | HTTP server port. `LINK_PORT` wins when both are set. |
+| `GRAPH_PATH` / `LINK_GRAPH_PATH` | `./data/graph` | Graph JSON directory. `LINK_GRAPH_PATH` wins when both are set. |
 
 ## HTTP API overview
 
@@ -86,62 +92,32 @@ Core endpoints:
 - `DELETE /api/edges/:id`
 - `GET /api/search?q=...`
 - `GET /api/nodes/:id/context`
-- `GET /api/history`
-- `GET /api/history/:version`
-- `GET /api/export`
-- `POST /api/import`
-- `POST /api/admin/seed/bootstrap`
 
-All mutations require `expectedVersion` in the JSON body or query string. Stale writes return `409`.
+Mutations do not require `expectedVersion`; invalid graph references fail with clear validation errors.
 
 Example:
 
 ```bash
-curl -s -X POST http://localhost:3000/api/admin/seed/bootstrap
 curl -s -X POST http://localhost:3000/api/nodes \
   -H 'content-type: application/json' \
-  -d '{"expectedVersion":1,"name":"Ada Lovelace","typeId":"person"}'
+  -d '{"name":"Ada Lovelace","typeId":"person"}'
 ```
 
 ## Realtime updates
 
-Connect a WebSocket client to:
-
-```text
-/api/realtime
-```
-
-Successful graph mutations broadcast `graph.changed` events with the new graph version. Clients should refetch `/api/graph` after receiving a change event.
+Connect a WebSocket client to `/api/realtime`. Successful graph mutations broadcast `graph.changed` events without graph versions. Clients should refetch `/api/graph` after receiving a change event.
 
 ## MCP / agent usage
 
-The `/mcp` endpoint is a standard MCP Streamable HTTP transport powered by `@modelcontextprotocol/sdk`. MCP clients should connect to:
+The `/mcp` endpoint is a standard MCP Streamable HTTP transport powered by `@modelcontextprotocol/sdk`. MCP clients connect to:
 
 ```text
 http://localhost:3000/mcp
 ```
 
-The server exposes graph tools through MCP `tools/list` and `tools/call`, including `get_graph`, `search_graph`, `get_node_context`, type/node/edge mutation tools, `get_history`, and `export_graph`. Mutation tools require the latest graph `expectedVersion`, matching the HTTP API's optimistic concurrency behavior.
+The server exposes local graph tools through MCP `tools/list` and `tools/call`, including `get_graph`, `search_graph`, `get_node_context`, and type/node/edge mutation tools. There is no auth and no `expectedVersion`.
 
 Agent workflow guidance is documented in `docs/link-agent-instructions.md`.
-
-## Import and export
-
-Export:
-
-```bash
-curl -s http://localhost:3000/api/export > link-export.json
-```
-
-Import:
-
-```bash
-curl -s -X POST http://localhost:3000/api/import \
-  -H 'content-type: application/json' \
-  --data-binary @link-export.json
-```
-
-Import replaces the graph data with the supplied export payload and records an import history entry.
 
 ## Container usage
 
@@ -151,32 +127,10 @@ Build the image:
 docker build -t link .
 ```
 
-Run with persistent SQLite data:
+Run with graph data mounted:
 
 ```bash
-docker run --rm -p 3000:3000 -v "$PWD/.data:/data" \
-  -e ADMIN_ENABLED=true \
-  link
+docker run --rm -p 3000:3000 -v "$PWD/data/graph:/data/graph" link
 ```
 
-The container uses `/data/link.sqlite` by default. Mount `/data` to preserve graph data across restarts.
-
-## Validation
-
-Before shipping changes, run:
-
-```bash
-bun test
-bun run build
-```
-
-For app-level validation, start the server and exercise:
-
-1. `GET /api/health`.
-2. `POST /api/admin/seed/bootstrap` when admin is enabled.
-3. Node and edge creation through HTTP.
-4. `GET /api/search` and `GET /api/nodes/:id/context`.
-5. Export/import.
-6. Web UI load and graph interactions.
-7. WebSocket realtime refresh.
-8. MCP `tools/list` and `tools/call`.
+Use `LINK_GRAPH_PATH` if you mount the graph somewhere else inside the container.

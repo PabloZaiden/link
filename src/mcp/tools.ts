@@ -1,7 +1,5 @@
 import { GraphError } from "../domain/errors";
-import type { Actor } from "../domain/types";
 import {
-  expectedVersionFromValue,
   parseEdgeInput,
   parseNodeInput,
   parseTypeInput,
@@ -28,9 +26,7 @@ export type LinkMcpToolName =
   | "delete_node_type"
   | "create_edge_type"
   | "update_edge_type"
-  | "delete_edge_type"
-  | "get_history"
-  | "export_graph";
+  | "delete_edge_type";
 
 export const linkMcpToolNames: LinkMcpToolName[] = [
   "get_graph",
@@ -48,29 +44,26 @@ export const linkMcpToolNames: LinkMcpToolName[] = [
   "create_edge_type",
   "update_edge_type",
   "delete_edge_type",
-  "get_history",
-  "export_graph",
 ];
 
 export interface LinkToolContext {
   repository: GraphRepository;
   realtime: RealtimeHub;
-  actor: Actor;
 }
 
-function broadcast(hub: RealtimeHub, version: number, recordType: string, recordId: string, operation: string): void {
-  hub.broadcast({ type: "graph.changed", version, recordType, recordId, operation });
+function broadcast(hub: RealtimeHub, recordType: string, recordId: string, operation: string): void {
+  hub.broadcast({ type: "graph.changed", recordType, recordId, operation });
 }
 
 export function callLinkTool(name: string, args: JsonMap, context: LinkToolContext): unknown {
-  const { repository, realtime, actor } = context;
-  const mutate = <T extends { version: number; record?: { id?: string }; deletedId?: string }>(
+  const { repository, realtime } = context;
+  const mutate = <T extends { record?: { id?: string }; deletedId?: string }>(
     recordType: string,
     operation: string,
     action: () => T,
   ): T => {
     const result = action();
-    broadcast(realtime, result.version, recordType, result.record?.id ?? result.deletedId ?? recordType, operation);
+    broadcast(realtime, recordType, result.record?.id ?? result.deletedId ?? recordType, operation);
     return result;
   };
 
@@ -85,54 +78,30 @@ export function callLinkTool(name: string, args: JsonMap, context: LinkToolConte
       return repository.search(String(args.query ?? ""));
     case "get_node_context":
       return repository.getContext(String(args.nodeId ?? ""));
-    case "get_history":
-      return repository.getHistory();
-    case "export_graph":
-      return repository.exportGraph();
     case "create_node_type":
-      return mutate("nodeType", "create", () =>
-        repository.createNodeType(parseTypeInput(args) as TypeInput, { expectedVersion: expectedVersionFromValue(args.expectedVersion), actor }),
-      );
+      return mutate("nodeType", "create", () => repository.createNodeType(parseTypeInput(args) as TypeInput));
     case "update_node_type":
-      return mutate("nodeType", "update", () =>
-        repository.updateNodeType(requiredId(args), parseTypeInput(args, true), { expectedVersion: expectedVersionFromValue(args.expectedVersion), actor }),
-      );
+      return mutate("nodeType", "update", () => repository.updateNodeType(requiredId(args), parseTypeInput(args, true)));
     case "delete_node_type":
-      return mutate("nodeType", "delete", () =>
-        repository.deleteNodeType(requiredId(args), { expectedVersion: expectedVersionFromValue(args.expectedVersion), actor }),
-      );
+      return mutate("nodeType", "delete", () => repository.deleteNodeType(requiredId(args)));
     case "create_edge_type":
-      return mutate("edgeType", "create", () =>
-        repository.createEdgeType(parseTypeInput(args) as TypeInput, { expectedVersion: expectedVersionFromValue(args.expectedVersion), actor }),
-      );
+      return mutate("edgeType", "create", () => repository.createEdgeType(parseTypeInput(args) as TypeInput));
     case "update_edge_type":
-      return mutate("edgeType", "update", () =>
-        repository.updateEdgeType(requiredId(args), parseTypeInput(args, true), { expectedVersion: expectedVersionFromValue(args.expectedVersion), actor }),
-      );
+      return mutate("edgeType", "update", () => repository.updateEdgeType(requiredId(args), parseTypeInput(args, true)));
     case "delete_edge_type":
-      return mutate("edgeType", "delete", () =>
-        repository.deleteEdgeType(requiredId(args), { expectedVersion: expectedVersionFromValue(args.expectedVersion), actor }),
-      );
+      return mutate("edgeType", "delete", () => repository.deleteEdgeType(requiredId(args)));
     case "create_node":
-      return mutate("node", "create", () =>
-        repository.createNode(parseNodeInput(args) as NodeInput, { expectedVersion: expectedVersionFromValue(args.expectedVersion), actor }),
-      );
+      return mutate("node", "create", () => repository.createNode(parseNodeInput(args) as NodeInput));
     case "update_node":
-      return mutate("node", "update", () =>
-        repository.updateNode(requiredId(args), parseNodeInput(args, true), { expectedVersion: expectedVersionFromValue(args.expectedVersion), actor }),
-      );
+      return mutate("node", "update", () => repository.updateNode(requiredId(args), parseNodeInput(args, true)));
     case "delete_node":
-      return mutate("node", "delete", () => repository.deleteNode(requiredId(args), { expectedVersion: expectedVersionFromValue(args.expectedVersion), actor }));
+      return mutate("node", "delete", () => repository.deleteNode(requiredId(args)));
     case "create_edge":
-      return mutate("edge", "create", () =>
-        repository.createEdge(parseEdgeInput(args) as EdgeInput, { expectedVersion: expectedVersionFromValue(args.expectedVersion), actor }),
-      );
+      return mutate("edge", "create", () => repository.createEdge(parseEdgeInput(args) as EdgeInput));
     case "update_edge":
-      return mutate("edge", "update", () =>
-        repository.updateEdge(requiredId(args), parseEdgeInput(args, true), { expectedVersion: expectedVersionFromValue(args.expectedVersion), actor }),
-      );
+      return mutate("edge", "update", () => repository.updateEdge(requiredId(args), parseEdgeInput(args, true)));
     case "delete_edge":
-      return mutate("edge", "delete", () => repository.deleteEdge(requiredId(args), { expectedVersion: expectedVersionFromValue(args.expectedVersion), actor }));
+      return mutate("edge", "delete", () => repository.deleteEdge(requiredId(args)));
     default:
       throw new GraphError("VALIDATION", "Unknown MCP tool.", { name });
   }

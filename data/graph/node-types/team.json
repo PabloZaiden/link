@@ -1,0 +1,8 @@
+{
+  "id": "team",
+  "name": "Team",
+  "description": "A team or working group.",
+  "metadataSchema": {},
+  "createdAt": "1970-01-01T00:00:00.000Z",
+  "updatedAt": "1970-01-01T00:00:00.000Z"
+}

@@ -71,7 +71,7 @@ export function App() {
     api<GraphContext>(`/api/nodes/${selectedNode.id}/context`)
       .then(setContext)
       .catch(err => setError(String(err)));
-  }, [selectedNode?.id, graph.version]);
+  }, [selectedNode?.id, graph]);
 
   useEffect(() => {
     if (selectedNodeTypeId && !graph.nodeTypes.some(type => type.id === selectedNodeTypeId)) {
@@ -136,7 +136,6 @@ export function App() {
       api("/api/node-types", {
         method: "POST",
         body: JSON.stringify({
-          expectedVersion: graph.version,
           id: formValue(form, "id") || undefined,
           name: formValue(form, "name"),
           description: formValue(form, "description"),
@@ -154,7 +153,6 @@ export function App() {
       api("/api/edge-types", {
         method: "POST",
         body: JSON.stringify({
-          expectedVersion: graph.version,
           id: formValue(form, "id") || undefined,
           name: formValue(form, "name"),
           description: formValue(form, "description"),
@@ -173,7 +171,6 @@ export function App() {
       api(`/api/node-types/${selectedNodeType.id}`, {
         method: "PUT",
         body: JSON.stringify({
-          expectedVersion: graph.version,
           name: formValue(form, "name"),
           description: formValue(form, "description"),
           metadataSchema: parseJsonObject(formValue(form, "metadataSchema")),
@@ -190,7 +187,6 @@ export function App() {
       api(`/api/edge-types/${selectedEdgeType.id}`, {
         method: "PUT",
         body: JSON.stringify({
-          expectedVersion: graph.version,
           name: formValue(form, "name"),
           description: formValue(form, "description"),
           metadataSchema: parseJsonObject(formValue(form, "metadataSchema")),
@@ -206,7 +202,6 @@ export function App() {
       api("/api/nodes", {
         method: "POST",
         body: JSON.stringify({
-          expectedVersion: graph.version,
           id: formValue(form, "id") || undefined,
           name: formValue(form, "name"),
           typeId: formValue(form, "typeId"),
@@ -224,13 +219,12 @@ export function App() {
     void saveNode(event.currentTarget);
   };
 
-  const saveNode = async (form: HTMLFormElement, expectedVersion = graph.version) => {
+  const saveNode = async (form: HTMLFormElement) => {
     if (!selectedNode) return false;
     return run("Node updated.", () =>
       api(`/api/nodes/${selectedNode.id}`, {
         method: "PUT",
         body: JSON.stringify({
-          expectedVersion,
           name: formValue(form, "name"),
           typeId: formValue(form, "typeId"),
           description: formValue(form, "description"),
@@ -247,7 +241,6 @@ export function App() {
       api("/api/edges", {
         method: "POST",
         body: JSON.stringify({
-          expectedVersion: graph.version,
           id: formValue(form, "id") || undefined,
           typeId: formValue(form, "typeId"),
           sourceNodeId: formValue(form, "sourceNodeId"),
@@ -267,14 +260,13 @@ export function App() {
     void saveEdge(event.currentTarget, edgeId);
   };
 
-  const saveEdge = async (form: HTMLFormElement, edgeId: string, expectedVersion = graph.version) => {
+  const saveEdge = async (form: HTMLFormElement, edgeId: string) => {
     const edge = graph.edges.find(candidate => candidate.id === edgeId) ?? context?.edges.find(candidate => candidate.id === edgeId) ?? null;
     if (!edge) return false;
     return run("Edge updated.", () =>
       api(`/api/edges/${edge.id}`, {
         method: "PUT",
         body: JSON.stringify({
-          expectedVersion,
           typeId: formValue(form, "typeId"),
           sourceNodeId: formValue(form, "sourceNodeId"),
           targetNodeId: formValue(form, "targetNodeId"),
@@ -398,15 +390,11 @@ export function App() {
 
     const shouldSaveNode = isNodeDirty();
     const dirtyEdgeIds = getDirtyEdgeIds();
-    let expectedVersion = graph.version;
-
     if (shouldSaveNode && nodeFormRef.current) {
-      const saved = await saveNode(nodeFormRef.current, expectedVersion);
+      const saved = await saveNode(nodeFormRef.current);
       if (!saved) {
         return;
       }
-
-      expectedVersion += 1;
     }
 
     for (const edgeId of dirtyEdgeIds) {
@@ -415,12 +403,10 @@ export function App() {
         continue;
       }
 
-      const saved = await saveEdge(form, edgeId, expectedVersion);
+      const saved = await saveEdge(form, edgeId);
       if (!saved) {
         return;
       }
-
-      expectedVersion += 1;
     }
 
     applySelection(pendingSelection);
@@ -445,16 +431,16 @@ export function App() {
   };
 
   const deleteNode = (id: string) =>
-    run("Node deleted.", () => api(`/api/nodes/${id}`, { method: "DELETE", body: JSON.stringify({ expectedVersion: graph.version }) }));
+    run("Node deleted.", () => api(`/api/nodes/${id}`, { method: "DELETE" }));
 
   const deleteEdge = (id: string) =>
-    run("Edge deleted.", () => api(`/api/edges/${id}`, { method: "DELETE", body: JSON.stringify({ expectedVersion: graph.version }) }));
+    run("Edge deleted.", () => api(`/api/edges/${id}`, { method: "DELETE" }));
 
   const deleteNodeType = (id: string) =>
-    run("Node type deleted.", () => api(`/api/node-types/${id}`, { method: "DELETE", body: JSON.stringify({ expectedVersion: graph.version }) }));
+    run("Node type deleted.", () => api(`/api/node-types/${id}`, { method: "DELETE" }));
 
   const deleteEdgeType = (id: string) =>
-    run("Edge type deleted.", () => api(`/api/edge-types/${id}`, { method: "DELETE", body: JSON.stringify({ expectedVersion: graph.version }) }));
+    run("Edge type deleted.", () => api(`/api/edge-types/${id}`, { method: "DELETE" }));
 
   return (
     <main className="flex h-screen flex-col bg-zinc-950 text-zinc-100">

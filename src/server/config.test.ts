@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import path from "path";
 import { loadConfig } from "./config";
 import { GraphError } from "../domain/errors";
 
@@ -6,8 +7,7 @@ describe("loadConfig", () => {
   test("loads defaults", () => {
     const config = loadConfig({});
     expect(config.port).toBe(3000);
-    expect(config.authMode).toBe("none");
-    expect(config.databaseProvider).toBe("sqlite");
+    expect(path.normalize(config.graphPath).endsWith(path.join("data", "graph"))).toBe(true);
   });
 
   test("uses LINK_PORT when provided", () => {
@@ -23,8 +23,10 @@ describe("loadConfig", () => {
   test("rejects invalid values", () => {
     expect(() => loadConfig({ PORT: "bad" })).toThrow(GraphError);
     expect(() => loadConfig({ LINK_PORT: "bad" })).toThrow(GraphError);
-    expect(() => loadConfig({ AUTH_MODE: "entra" })).toThrow(GraphError);
-    expect(() => loadConfig({ DATABASE_PROVIDER: "sql" })).toThrow(GraphError);
+  });
+
+  test("uses graph path overrides", () => {
+    expect(loadConfig({ GRAPH_PATH: "/tmp/graph" }).graphPath).toBe("/tmp/graph");
+    expect(loadConfig({ GRAPH_PATH: "/tmp/graph", LINK_GRAPH_PATH: "/tmp/link-graph" }).graphPath).toBe("/tmp/link-graph");
   });
 });
-

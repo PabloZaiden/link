@@ -2,7 +2,7 @@ import type { EdgeTypeDefinition, NodeTypeDefinition } from "./types";
 
 const timestamp = "1970-01-01T00:00:00.000Z";
 
-export const bootstrapNodeTypes: Omit<NodeTypeDefinition, "createdAt" | "updatedAt" | "deletedAt">[] = [
+export const bootstrapNodeTypes: Omit<NodeTypeDefinition, "createdAt" | "updatedAt">[] = [
   { id: "product-group", name: "Product Group", description: "A product group or business area.", metadataSchema: {} },
   { id: "person", name: "Person", description: "A person or contact.", metadataSchema: { role: { type: "string", label: "Role" } } },
   { id: "product", name: "Product", description: "A product or service.", metadataSchema: {} },
@@ -30,7 +30,7 @@ export const bootstrapNodeTypes: Omit<NodeTypeDefinition, "createdAt" | "updated
   { id: "aka", name: "AKA", description: "An alias or alternate name.", metadataSchema: {} },
 ];
 
-export const bootstrapEdgeTypes: Omit<EdgeTypeDefinition, "createdAt" | "updatedAt" | "deletedAt">[] = [
+export const bootstrapEdgeTypes: Omit<EdgeTypeDefinition, "createdAt" | "updatedAt">[] = [
   { id: "member-of", name: "member of", description: "Connects a person to a team or org.", metadataSchema: {} },
   { id: "owns", name: "owns", description: "Connects an owner to a product, project, or issue.", metadataSchema: {} },
   { id: "works-on", name: "works on", description: "Connects a person or team to a project.", metadataSchema: {} },
@@ -46,8 +46,7 @@ export function materializeBootstrapTypes(): {
   edgeTypes: EdgeTypeDefinition[];
 } {
   return {
-    nodeTypes: bootstrapNodeTypes.map(type => ({ ...type, createdAt: timestamp, updatedAt: timestamp, deletedAt: null })),
-    edgeTypes: bootstrapEdgeTypes.map(type => ({ ...type, createdAt: timestamp, updatedAt: timestamp, deletedAt: null })),
+    nodeTypes: bootstrapNodeTypes.map(type => ({ ...type, createdAt: timestamp, updatedAt: timestamp })),
+    edgeTypes: bootstrapEdgeTypes.map(type => ({ ...type, createdAt: timestamp, updatedAt: timestamp })),
   };
 }
-

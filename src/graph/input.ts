@@ -1,6 +1,5 @@
-import type { AuthProvider } from "../auth/actor";
 import { GraphError } from "../domain/errors";
-import type { EdgeDirection, Metadata, MetadataSchema, WriteOptions } from "../domain/types";
+import type { EdgeDirection, Metadata, MetadataSchema } from "../domain/types";
 import type { EdgeInput, NodeInput, TypeInput } from "../storage/repository";
 
 export interface JsonMap {
@@ -97,28 +96,4 @@ export function parseEdgeInput(body: JsonMap, partial = false): Partial<EdgeInpu
 
 export function requiredId(args: JsonMap, field = "id"): string {
   return requiredString(args, field);
-}
-
-export function expectedVersionFromValue(value: unknown): number {
-  if (value === undefined || value === null || value === "") {
-    throw new GraphError("VALIDATION", "Mutations require a non-negative integer expectedVersion.", { expectedVersion: value });
-  }
-  const version = Number(value);
-  if (!Number.isInteger(version) || version < 0) {
-    throw new GraphError("VALIDATION", "Mutations require a non-negative integer expectedVersion.", { expectedVersion: value });
-  }
-  return version;
-}
-
-export function expectedVersionFrom(request: Request, body: JsonMap): number {
-  const fromBody = body.expectedVersion;
-  const fromQuery = new URL(request.url).searchParams.get("expectedVersion");
-  return expectedVersionFromValue(fromBody ?? fromQuery);
-}
-
-export function writeOptions(request: Request, body: JsonMap, auth: AuthProvider): WriteOptions {
-  return {
-    expectedVersion: expectedVersionFrom(request, body),
-    actor: auth.actorForRequest(request),
-  };
 }
