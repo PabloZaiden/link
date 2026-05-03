@@ -94,11 +94,12 @@ describe("HTTP API", () => {
   test("supports API CRUD across node types, edge types, nodes, and edges", async () => {
     const base = await start();
 
-    const nodeType = await request<{ record: { id: string; name: string } }>(base, "/api/node-types", {
+    const nodeType = await request<{ record: { id: string; name: string; immutable?: boolean } }>(base, "/api/node-types", {
       method: "POST",
-      body: JSON.stringify({ id: "initiative", name: "Initiative" }),
+      body: JSON.stringify({ id: "initiative", name: "Initiative", immutable: true }),
     });
     expect(nodeType.record.id).toBe("initiative");
+    expect(nodeType.record.immutable).toBe(true);
 
     const updatedNodeType = await request<{ record: { description?: string } }>(base, "/api/node-types/initiative", {
       method: "PUT",
@@ -226,7 +227,9 @@ describe("HTTP API", () => {
       const toolRepository = new JsonGraphRepository(graphPath, { seed: true });
       const realtime = new RealtimeHub();
       const createNodeTool = linkMcpTools.find(tool => tool.name === "create_node");
+      const createNodeTypeTool = linkMcpTools.find(tool => tool.name === "create_node_type");
       expect(Object.keys(createNodeTool?.inputSchema ?? {})).not.toContain("expectedVersion");
+      expect(Object.keys(createNodeTypeTool?.inputSchema ?? {})).toContain("immutable");
       const toolNames = linkMcpTools.map(tool => String(tool.name));
       expect(toolNames).not.toContain("get_history");
       expect(toolNames).not.toContain("export_graph");

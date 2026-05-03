@@ -6,6 +6,7 @@ export interface TypeDefinition {
   id: string;
   name: string;
   description: string;
+  immutable?: boolean;
   metadataSchema: Record<string, unknown>;
 }
 

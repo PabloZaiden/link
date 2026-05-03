@@ -5,7 +5,7 @@ import { GraphMap } from "./app/GraphMap";
 import { Panel, TypeFilterControl } from "./app/components";
 import type { EditorTab, GraphContext, GraphEdge, GraphNode, GraphSnapshot, PendingSelection } from "./app/types";
 import { emptyGraph } from "./app/types";
-import { api, edgeDirectionFormValue, formValue, metadataFormValue, parseJsonObject, stableStringify } from "./app/utils";
+import { api, edgeDirectionFormValue, formBooleanValue, formValue, metadataFormValue, parseJsonObject, stableStringify } from "./app/utils";
 
 export function App() {
   const [graph, setGraph] = useState<GraphSnapshot>(emptyGraph);
@@ -139,6 +139,7 @@ export function App() {
           id: formValue(form, "id") || undefined,
           name: formValue(form, "name"),
           description: formValue(form, "description"),
+          immutable: formBooleanValue(form, "immutable"),
           metadataSchema: parseJsonObject(formValue(form, "metadataSchema")),
         }),
       }),
@@ -156,6 +157,7 @@ export function App() {
           id: formValue(form, "id") || undefined,
           name: formValue(form, "name"),
           description: formValue(form, "description"),
+          immutable: formBooleanValue(form, "immutable"),
           metadataSchema: parseJsonObject(formValue(form, "metadataSchema")),
         }),
       }),
@@ -173,6 +175,7 @@ export function App() {
         body: JSON.stringify({
           name: formValue(form, "name"),
           description: formValue(form, "description"),
+          immutable: formBooleanValue(form, "immutable"),
           metadataSchema: parseJsonObject(formValue(form, "metadataSchema")),
         }),
       }),

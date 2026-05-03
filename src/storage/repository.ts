@@ -4,6 +4,7 @@ export interface TypeInput {
   id?: string;
   name: string;
   description?: string;
+  immutable?: boolean;
   metadataSchema?: MetadataSchema;
 }
 

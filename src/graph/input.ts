@@ -46,6 +46,13 @@ export function optionalObject<T extends JsonMap>(body: JsonMap, field: string):
   return value as T;
 }
 
+export function optionalBoolean(body: JsonMap, field: string): boolean | undefined {
+  const value = body[field];
+  if (value === undefined || value === null) return undefined;
+  if (typeof value !== "boolean") throw new GraphError("VALIDATION", `${field} must be a boolean.`, { field, value });
+  return value;
+}
+
 export function requiredDirection(body: JsonMap): EdgeDirection {
   const direction = requiredString(body, "direction");
   if (direction !== "directed" && direction !== "bidirectional") {
@@ -68,6 +75,7 @@ export function parseTypeInput(body: JsonMap, partial = false): Partial<TypeInpu
     id: optionalString(body, "id"),
     name: partial ? optionalString(body, "name") : requiredString(body, "name"),
     description: optionalString(body, "description"),
+    immutable: optionalBoolean(body, "immutable"),
     metadataSchema: optionalObject<MetadataSchema>(body, "metadataSchema"),
   };
 }

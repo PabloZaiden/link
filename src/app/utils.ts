@@ -18,6 +18,10 @@ export function edgeDirectionFormValue(form: HTMLFormElement): GraphEdge["direct
   return new FormData(form).get("bidirectional") ? "bidirectional" : "directed";
 }
 
+export function formBooleanValue(form: HTMLFormElement, name: string): boolean {
+  return new FormData(form).get(name) === "on";
+}
+
 export function metadataFormValue(form: HTMLFormElement, name: string): Metadata {
   const validationError = formValue(form, `${name}ValidationError`);
   if (validationError) {

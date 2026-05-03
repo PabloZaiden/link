@@ -1,7 +1,7 @@
 ---
 name: link
-description: Use Link through its MCP server or deterministic HTTP API to inspect, query, and safely update local knowledge graphs of typed nodes, edges, and metadata.
-compatibility: Requires a running Link server with the MCP Streamable HTTP endpoint available at /mcp or the HTTP API available locally.
+description: Use Link through its MCP server to inspect, query, and safely update local knowledge graphs of typed nodes, edges, and metadata.
+compatibility: Requires a running Link server with the MCP Streamable HTTP endpoint available at /mcp, usually at http://localhost:3000/mcp.
 ---
 
 # Link
@@ -35,3 +35,12 @@ Use this skill when an agent needs to interact with a Link knowledge graph throu
 
 - Do not invent facts when graph data is missing. Say that the graph does not contain the requested information.
 - Preserve unknown metadata fields unless the user explicitly asks to remove them.
+
+## Status updates
+
+
+- Use the `status-update` node type for dated updates about one or many graph entities (a person, organization, or other entity and potentially other related entities).
+- A status update must include metadata `date` in `YYYY-MM-DD` format.
+- Connect each status update to the things it describes with directed `status-for` edges from the status update node to the target nodes.
+- Status update nodes are immutable. Do not call `update_node` for an existing `status-update`; create a new status update node for each later update.
+- To answer status or timeline questions, search for the target nodes, inspect their context, select connected `status-update` nodes through `status-for` edges, and sort them by metadata `date`.
