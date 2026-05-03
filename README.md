@@ -143,4 +143,8 @@ Run with graph data mounted:
 docker run --rm -p 3000:3000 -v "$PWD/.data:/data" link
 ```
 
-Use `LINK_DATA_DIR` if you mount the data directory somewhere else inside the container. To seed an empty mounted graph, run the container command with `bun src/index.ts --seed`.
+Use `LINK_DATA_DIR` if you mount the data directory somewhere else inside the container. To seed an empty mounted graph, override the container command explicitly:
+
+```bash
+docker run --rm -p 3000:3000 -v "$PWD/.data:/data" link bun src/index.ts --seed
+```

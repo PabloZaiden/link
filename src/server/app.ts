@@ -1,5 +1,6 @@
 import { serve, type BunFile, type HTMLBundle, type Server } from "bun";
 import { createRoutes } from "../api/http";
+import { configError } from "../domain/errors";
 import { RealtimeHub } from "../realtime/hub";
 import { JsonGraphRepository } from "../storage/json";
 import type { GraphRepository } from "../storage/repository";
@@ -16,6 +17,9 @@ export interface AppDependencies {
 
 export function createApp(dependencies: AppDependencies) {
   const config = dependencies.config ?? loadConfig();
+  if (dependencies.repository !== undefined && dependencies.seed === true) {
+    throw configError("Cannot seed during app creation when a custom repository is provided. Seed the repository before passing it to createApp().");
+  }
   const repository = dependencies.repository ?? new JsonGraphRepository(config.graphPath, { seed: dependencies.seed ?? false });
   const realtime = dependencies.realtime ?? new RealtimeHub();
 
@@ -31,11 +35,12 @@ export function createApp(dependencies: AppDependencies) {
 }
 
 export interface StartAppOptions {
+  config?: AppConfig;
   seed?: boolean;
 }
 
 export function startApp(index: Response | BunFile | HTMLBundle, options: StartAppOptions = {}): Server<undefined> {
-  const app = createApp({ index, seed: options.seed ?? false });
+  const app = createApp({ index, config: options.config, seed: options.seed ?? false });
   const server = serve(app);
   console.log(`Link server running at ${server.url}`);
   return server;
