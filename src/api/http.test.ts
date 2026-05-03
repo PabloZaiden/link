@@ -36,7 +36,7 @@ afterEach(() => {
 async function start() {
   graphRoot = mkdtempSync(path.join(tmpdir(), "link-http-"));
   const graphPath = path.join(graphRoot, "graph");
-  repository = new JsonGraphRepository(graphPath);
+  repository = new JsonGraphRepository(graphPath, { seed: true });
   const app = createApp({
     index,
     repository,
@@ -57,7 +57,7 @@ async function request<T>(base: string, requestPath: string, init?: RequestInit)
 }
 
 describe("HTTP API", () => {
-  test("supports automatic bootstrap, CRUD, search, context, and no version fields", async () => {
+  test("supports explicit seed bootstrap, CRUD, search, context, and no version fields", async () => {
     const base = await start();
     const health = await request<{ ok: boolean; graphPath: string }>(base, "/api/health");
     expect(health.ok).toBe(true);
@@ -223,7 +223,7 @@ describe("HTTP API", () => {
   test("supports versionless MCP tools with shared graph state", () => {
     const graphPath = tempGraphPath();
     try {
-      const toolRepository = new JsonGraphRepository(graphPath);
+      const toolRepository = new JsonGraphRepository(graphPath, { seed: true });
       const realtime = new RealtimeHub();
       const createNodeTool = linkMcpTools.find(tool => tool.name === "create_node");
       expect(Object.keys(createNodeTool?.inputSchema ?? {})).not.toContain("expectedVersion");

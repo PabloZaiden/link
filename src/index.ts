@@ -1,10 +1,13 @@
 import index from "./index.html";
 import { GraphError } from "./domain/errors";
 import { startApp } from "./server/app";
+import { parseCliOptions } from "./server/cli";
 import { loadConfig } from "./server/config";
 import { validateGraphPath } from "./storage/json";
 
-if (Bun.argv.includes("--validate")) {
+const cliOptions = parseCliOptions(Bun.argv);
+
+if (cliOptions.validate) {
   const config = loadConfig();
   try {
     validateGraphPath(config.graphPath);
@@ -20,5 +23,5 @@ if (Bun.argv.includes("--validate")) {
     process.exit(1);
   }
 } else {
-  startApp(index);
+  startApp(index, { seed: cliOptions.seed });
 }

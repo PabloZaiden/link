@@ -10,12 +10,13 @@ export interface AppDependencies {
   config?: AppConfig;
   repository?: GraphRepository;
   realtime?: RealtimeHub;
+  seed?: boolean;
   index: Response | BunFile | HTMLBundle;
 }
 
 export function createApp(dependencies: AppDependencies) {
   const config = dependencies.config ?? loadConfig();
-  const repository = dependencies.repository ?? new JsonGraphRepository(config.graphPath);
+  const repository = dependencies.repository ?? new JsonGraphRepository(config.graphPath, { seed: dependencies.seed ?? false });
   const realtime = dependencies.realtime ?? new RealtimeHub();
 
   return {
@@ -29,8 +30,12 @@ export function createApp(dependencies: AppDependencies) {
   };
 }
 
-export function startApp(index: Response | BunFile | HTMLBundle): Server<undefined> {
-  const app = createApp({ index });
+export interface StartAppOptions {
+  seed?: boolean;
+}
+
+export function startApp(index: Response | BunFile | HTMLBundle, options: StartAppOptions = {}): Server<undefined> {
+  const app = createApp({ index, seed: options.seed ?? false });
   const server = serve(app);
   console.log(`Link server running at ${server.url}`);
   return server;

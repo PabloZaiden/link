@@ -19,8 +19,6 @@ COPY package.json bun.lock bunfig.toml tsconfig.json bun-env.d.ts build.ts ./
 COPY --from=build /app/node_modules ./node_modules
 COPY src ./src
 
-RUN mkdir -p /data
-
 EXPOSE 3000
 
 CMD ["bun", "src/index.ts"]
