@@ -117,6 +117,11 @@ function fileErrorPrefix(filePath: string): string {
   return `Invalid graph data in ${filePath}`;
 }
 
+function shouldIgnoreCollectionEntry(fileName: string): boolean {
+  const lowerName = fileName.toLowerCase();
+  return fileName.startsWith(".") || lowerName.endsWith(".tmp") || lowerName === "thumbs.db" || lowerName === "desktop.ini";
+}
+
 function parseJsonFile(filePath: string): Record<string, unknown> {
   const text = readFileSync(filePath, "utf8");
   if (text.includes("<<<<<<<") || text.includes("=======") || text.includes(">>>>>>>")) {
@@ -244,6 +249,7 @@ export class JsonGraphRepository implements GraphRepository {
     if (!existsSync(dir)) return [];
     const records: T[] = [];
     for (const fileName of readdirSync(dir).sort()) {
+      if (shouldIgnoreCollectionEntry(fileName)) continue;
       const filePath = path.join(dir, fileName);
       if (!statSync(filePath).isFile()) continue;
       if (!fileName.endsWith(".json")) {

@@ -1,0 +1,8 @@
+{
+  "id": "depends-on",
+  "name": "depends on",
+  "description": "Dependency relationship.",
+  "metadataSchema": {},
+  "createdAt": "1970-01-01T00:00:00.000Z",
+  "updatedAt": "1970-01-01T00:00:00.000Z"
+}

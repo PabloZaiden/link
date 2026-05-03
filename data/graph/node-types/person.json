@@ -1,0 +1,13 @@
+{
+  "id": "person",
+  "name": "Person",
+  "description": "A person or contact.",
+  "metadataSchema": {
+    "role": {
+      "label": "Role",
+      "type": "string"
+    }
+  },
+  "createdAt": "1970-01-01T00:00:00.000Z",
+  "updatedAt": "1970-01-01T00:00:00.000Z"
+}

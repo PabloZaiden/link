@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import path from "path";
 import { loadConfig } from "./config";
 import { GraphError } from "../domain/errors";
 
@@ -6,7 +7,7 @@ describe("loadConfig", () => {
   test("loads defaults", () => {
     const config = loadConfig({});
     expect(config.port).toBe(3000);
-    expect(config.graphPath.endsWith("data/graph")).toBe(true);
+    expect(path.normalize(config.graphPath).endsWith(path.join("data", "graph"))).toBe(true);
   });
 
   test("uses LINK_PORT when provided", () => {

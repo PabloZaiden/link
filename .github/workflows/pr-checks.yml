@@ -21,7 +21,9 @@ jobs:
         run: bun install --frozen-lockfile
 
       - name: Validate graph data
-        run: bun src/index.ts --validate --graph-path ./data/graph
+        run: |
+          test -d ./data/graph
+          bun src/index.ts --validate --graph-path ./data/graph
 
       - name: Test
         run: bun test

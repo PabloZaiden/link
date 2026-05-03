@@ -1,0 +1,23 @@
+{
+  "id": "project",
+  "name": "Project",
+  "description": "A project or initiative.",
+  "metadataSchema": {
+    "status": {
+      "label": "Status",
+      "options": [
+        "not-started",
+        "active",
+        "blocked",
+        "done"
+      ],
+      "type": "enum"
+    },
+    "targetDate": {
+      "label": "Target date",
+      "type": "date"
+    }
+  },
+  "createdAt": "1970-01-01T00:00:00.000Z",
+  "updatedAt": "1970-01-01T00:00:00.000Z"
+}

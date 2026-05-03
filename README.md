@@ -130,7 +130,7 @@ docker build -t link .
 Run with graph data mounted:
 
 ```bash
-docker run --rm -p 3000:3000 -v "$PWD/data/graph:/app/data/graph" link
+docker run --rm -p 3000:3000 -v "$PWD/data/graph:/data/graph" link
 ```
 
 Use `LINK_GRAPH_PATH` if you mount the graph somewhere else inside the container.

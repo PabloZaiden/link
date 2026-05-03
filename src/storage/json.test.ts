@@ -55,6 +55,21 @@ describe("JsonGraphRepository", () => {
     }
   });
 
+  test("ignores dotfiles and temporary files in collection directories", () => {
+    const graphPath = tempGraphPath();
+    try {
+      const storage = new JsonGraphRepository(graphPath);
+      writeFileSync(path.join(graphPath, "nodes", ".DS_Store"), "metadata");
+      writeFileSync(path.join(graphPath, "nodes", "person.json.123.tmp"), "{\"partial\":true}");
+      writeFileSync(path.join(graphPath, "nodes", "Thumbs.db"), "metadata");
+
+      expect(() => validateGraphPath(graphPath)).not.toThrow();
+      expect(storage.getSnapshot().nodeTypes.some(type => type.id === "person")).toBe(true);
+    } finally {
+      cleanup(graphPath);
+    }
+  });
+
   test("refuses deleting types that are still in use", () => {
     const graphPath = tempGraphPath();
     try {
