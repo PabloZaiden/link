@@ -3,6 +3,8 @@ import { mkdtempSync, rmSync } from "fs";
 import { tmpdir } from "os";
 import path from "path";
 import { serve, type Server } from "bun";
+import { Client } from "@modelcontextprotocol/sdk/client/index.js";
+import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import index from "../index.html";
 import { RealtimeHub } from "../realtime/hub";
 import { createApp } from "../server/app";
@@ -89,6 +91,96 @@ describe("HTTP API", () => {
     expect(context.edges[0]?.id).toBe(edge.record.id);
   });
 
+  test("supports API CRUD across node types, edge types, nodes, and edges", async () => {
+    const base = await start();
+
+    const nodeType = await request<{ record: { id: string; name: string } }>(base, "/api/node-types", {
+      method: "POST",
+      body: JSON.stringify({ id: "initiative", name: "Initiative" }),
+    });
+    expect(nodeType.record.id).toBe("initiative");
+
+    const updatedNodeType = await request<{ record: { description?: string } }>(base, "/api/node-types/initiative", {
+      method: "PUT",
+      body: JSON.stringify({ description: "Tracked initiative" }),
+    });
+    expect(updatedNodeType.record.description).toBe("Tracked initiative");
+
+    const edgeType = await request<{ record: { id: string; name: string } }>(base, "/api/edge-types", {
+      method: "POST",
+      body: JSON.stringify({ id: "supports", name: "supports" }),
+    });
+    expect(edgeType.record.id).toBe("supports");
+
+    const updatedEdgeType = await request<{ record: { description?: string } }>(base, "/api/edge-types/supports", {
+      method: "PUT",
+      body: JSON.stringify({ description: "Support relationship" }),
+    });
+    expect(updatedEdgeType.record.description).toBe("Support relationship");
+
+    const source = await request<{ record: { id: string; name: string } }>(base, "/api/nodes", {
+      method: "POST",
+      body: JSON.stringify({ name: "Source", typeId: "person" }),
+    });
+    const target = await request<{ record: { id: string; name: string } }>(base, "/api/nodes", {
+      method: "POST",
+      body: JSON.stringify({ name: "Target", typeId: "initiative" }),
+    });
+
+    const fetchedNode = await request<{ id: string }>(base, `/api/nodes/${source.record.id}`);
+    expect(fetchedNode.id).toBe(source.record.id);
+
+    const updatedNode = await request<{ record: { name: string } }>(base, `/api/nodes/${source.record.id}`, {
+      method: "PUT",
+      body: JSON.stringify({ name: "Source Updated" }),
+    });
+    expect(updatedNode.record.name).toBe("Source Updated");
+
+    const createdEdge = await request<{ record: { id: string } }>(base, "/api/edges", {
+      method: "POST",
+      body: JSON.stringify({
+        typeId: "supports",
+        sourceNodeId: source.record.id,
+        targetNodeId: target.record.id,
+        direction: "directed",
+      }),
+    });
+
+    const fetchedEdge = await request<{ id: string }>(base, `/api/edges/${createdEdge.record.id}`);
+    expect(fetchedEdge.id).toBe(createdEdge.record.id);
+
+    const updatedEdge = await request<{ record: { description?: string } }>(base, `/api/edges/${createdEdge.record.id}`, {
+      method: "PUT",
+      body: JSON.stringify({ description: "Updated edge" }),
+    });
+    expect(updatedEdge.record.description).toBe("Updated edge");
+
+    const deletedEdge = await request<{ deletedId: string }>(base, `/api/edges/${createdEdge.record.id}`, {
+      method: "DELETE",
+    });
+    expect(deletedEdge.deletedId).toBe(createdEdge.record.id);
+
+    const deletedSource = await request<{ deletedId: string }>(base, `/api/nodes/${source.record.id}`, {
+      method: "DELETE",
+    });
+    expect(deletedSource.deletedId).toBe(source.record.id);
+
+    const deletedTarget = await request<{ deletedId: string }>(base, `/api/nodes/${target.record.id}`, {
+      method: "DELETE",
+    });
+    expect(deletedTarget.deletedId).toBe(target.record.id);
+
+    const deletedEdgeType = await request<{ deletedId: string }>(base, "/api/edge-types/supports", {
+      method: "DELETE",
+    });
+    expect(deletedEdgeType.deletedId).toBe("supports");
+
+    const deletedNodeType = await request<{ deletedId: string }>(base, "/api/node-types/initiative", {
+      method: "DELETE",
+    });
+    expect(deletedNodeType.deletedId).toBe("initiative");
+  });
+
   test("returns validation errors and removed endpoints are unavailable", async () => {
     const base = await start();
 
@@ -152,6 +244,126 @@ describe("HTTP API", () => {
       expect(search.nodes[0]?.id).toBe(created.record.id);
     } finally {
       cleanup(graphPath);
+    }
+  });
+
+  test("supports MCP HTTP list and full tool lifecycle over /mcp", async () => {
+    const base = await start();
+    const client = new Client({ name: "http-test-client", version: "0.0.0" });
+    const transport = new StreamableHTTPClientTransport(new URL(`${base}/mcp`));
+
+    try {
+      await client.connect(transport);
+
+      const listedTools = await client.listTools();
+      expect(listedTools.tools.map(tool => tool.name)).toEqual(linkMcpTools.map(tool => tool.name));
+
+      const initialGraph = await client.callTool({ name: "get_graph", arguments: {} });
+      expect(initialGraph.structuredContent).toBeDefined();
+
+      const nodeType = await client.callTool({
+        name: "create_node_type",
+        arguments: { id: "initiative", name: "Initiative" },
+      });
+      expect((nodeType.structuredContent as { record: { id: string } }).record.id).toBe("initiative");
+
+      const edgeType = await client.callTool({
+        name: "create_edge_type",
+        arguments: { id: "supports", name: "supports" },
+      });
+      expect((edgeType.structuredContent as { record: { id: string } }).record.id).toBe("supports");
+
+      const sourceNode = await client.callTool({
+        name: "create_node",
+        arguments: { name: "Ada", typeId: "person" },
+      });
+      const sourceNodeId = (sourceNode.structuredContent as { record: { id: string } }).record.id;
+
+      const targetNode = await client.callTool({
+        name: "create_node",
+        arguments: { name: "Project Link", typeId: "initiative" },
+      });
+      const targetNodeId = (targetNode.structuredContent as { record: { id: string } }).record.id;
+
+      const updatedNode = await client.callTool({
+        name: "update_node",
+        arguments: { id: sourceNodeId, name: "Ada Lovelace" },
+      });
+      expect((updatedNode.structuredContent as { record: { name: string } }).record.name).toBe("Ada Lovelace");
+
+      const createdEdge = await client.callTool({
+        name: "create_edge",
+        arguments: {
+          typeId: "supports",
+          sourceNodeId,
+          targetNodeId,
+          direction: "directed",
+        },
+      });
+      const edgeId = (createdEdge.structuredContent as { record: { id: string } }).record.id;
+
+      const updatedEdge = await client.callTool({
+        name: "update_edge",
+        arguments: { id: edgeId, description: "Primary support" },
+      });
+      expect((updatedEdge.structuredContent as { record: { description?: string } }).record.description).toBe("Primary support");
+
+      const context = await client.callTool({
+        name: "get_node_context",
+        arguments: { nodeId: sourceNodeId },
+      });
+      expect((context.structuredContent as { edges: { id: string }[] }).edges[0]?.id).toBe(edgeId);
+
+      const search = await client.callTool({
+        name: "search_graph",
+        arguments: { query: "Ada Lovelace" },
+      });
+      expect((search.structuredContent as { nodes: { id: string }[] }).nodes[0]?.id).toBe(sourceNodeId);
+
+      const deletedEdge = await client.callTool({
+        name: "delete_edge",
+        arguments: { id: edgeId },
+      });
+      expect((deletedEdge.structuredContent as { deletedId: string }).deletedId).toBe(edgeId);
+
+      const deletedSourceNode = await client.callTool({
+        name: "delete_node",
+        arguments: { id: sourceNodeId },
+      });
+      expect((deletedSourceNode.structuredContent as { deletedId: string }).deletedId).toBe(sourceNodeId);
+
+      const deletedTargetNode = await client.callTool({
+        name: "delete_node",
+        arguments: { id: targetNodeId },
+      });
+      expect((deletedTargetNode.structuredContent as { deletedId: string }).deletedId).toBe(targetNodeId);
+
+      const updatedNodeType = await client.callTool({
+        name: "update_node_type",
+        arguments: { id: "initiative", description: "Tracked initiative" },
+      });
+      expect((updatedNodeType.structuredContent as { record: { description?: string } }).record.description).toBe("Tracked initiative");
+
+      const updatedEdgeType = await client.callTool({
+        name: "update_edge_type",
+        arguments: { id: "supports", description: "Support relationship" },
+      });
+      expect((updatedEdgeType.structuredContent as { record: { description?: string } }).record.description).toBe("Support relationship");
+
+      const deletedEdgeType = await client.callTool({
+        name: "delete_edge_type",
+        arguments: { id: "supports" },
+      });
+      expect((deletedEdgeType.structuredContent as { deletedId: string }).deletedId).toBe("supports");
+
+      const deletedNodeType = await client.callTool({
+        name: "delete_node_type",
+        arguments: { id: "initiative" },
+      });
+      expect((deletedNodeType.structuredContent as { deletedId: string }).deletedId).toBe("initiative");
+    } finally {
+      await transport.terminateSession().catch(() => undefined);
+      await client.close();
     }
   });
 });
