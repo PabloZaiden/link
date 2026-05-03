@@ -21,7 +21,9 @@ interface LinkToolDefinition {
   inputSchema: ToolInputShape;
 }
 
-const emptyInput: ToolInputShape = {};
+const getGraphInput: ToolInputShape = {
+  includeTypes: z.boolean().nullish().describe("Optional no-op flag retained for compatibility with clients that reject empty tool schemas."),
+};
 const idInput: ToolInputShape = { id: z.string().min(1) };
 const typeCreateInput: ToolInputShape = {
   id: optionalStringSchema,
@@ -72,7 +74,7 @@ const deleteInput: ToolInputShape = {
 };
 
 export const linkMcpTools: LinkToolDefinition[] = [
-  { name: "get_graph", title: "Get Graph", description: "Return the current Link graph snapshot.", inputSchema: emptyInput },
+  { name: "get_graph", title: "Get Graph", description: "Return the current Link graph snapshot.", inputSchema: getGraphInput },
   {
     name: "search_graph",
     title: "Search Graph",

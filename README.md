@@ -1,6 +1,6 @@
 # Link
 
-Link is a local-first Bun + React graph tracker for flexible work-related entities and relationships. Graph data is stored as canonical, Git-friendly JSON files under `./data/graph`; Git is the history, collaboration, backup, and conflict-resolution layer.
+Link is a local-first Bun + React graph tracker for flexible work-related entities and relationships. Graph data is stored as canonical, Git-friendly JSON files under `./.data/graph`; Git is the history, collaboration, backup, and conflict-resolution layer.
 
 ## Features
 
@@ -24,17 +24,17 @@ Open the app at the printed server URL, usually `http://localhost:3000`.
 Common checks:
 
 ```bash
-bun src/index.ts --validate --graph-path ./data/graph
+bun src/index.ts --validate
 bun test
 bun run build
 ```
 
 ## Graph storage
 
-The default graph path is `./data/graph`:
+The default graph path is `./.data/graph`:
 
 ```text
-data/
+.data/
   graph/
     node-types/
       person.json
@@ -54,9 +54,9 @@ Each record is pretty-printed JSON with deterministic top-level key order and a 
 
 1. `git pull`.
 2. Run Link locally and edit through the UI, HTTP API, or MCP tools.
-3. Inspect JSON changes under `data/graph`.
-4. `bun src/index.ts --validate --graph-path ./data/graph`.
-5. `git add data/graph && git commit`.
+3. Inspect JSON changes under `.data/graph`.
+4. `bun src/index.ts --validate`.
+5. `git add .data/graph && git commit`.
 6. `git pull --rebase` or merge, resolve JSON conflicts, re-run validation, then push.
 
 ## Configuration
@@ -64,7 +64,7 @@ Each record is pretty-printed JSON with deterministic top-level key order and a 
 | Variable | Default | Description |
 | --- | --- | --- |
 | `PORT` / `LINK_PORT` | `3000` | HTTP server port. `LINK_PORT` wins when both are set. |
-| `GRAPH_PATH` / `LINK_GRAPH_PATH` | `./data/graph` | Graph JSON directory. `LINK_GRAPH_PATH` wins when both are set. |
+| `LINK_DATA_DIR` | `./.data` | Base data directory. Graph JSON is always stored under the fixed `graph/` subdirectory inside it. |
 
 ## HTTP API overview
 
@@ -130,7 +130,7 @@ docker build -t link .
 Run with graph data mounted:
 
 ```bash
-docker run --rm -p 3000:3000 -v "$PWD/data/graph:/data/graph" link
+docker run --rm -p 3000:3000 -v "$PWD/.data:/data" link
 ```
 
-Use `LINK_GRAPH_PATH` if you mount the graph somewhere else inside the container.
+Use `LINK_DATA_DIR` if you mount the data directory somewhere else inside the container.
