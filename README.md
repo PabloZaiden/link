@@ -1,16 +1,16 @@
 # Link
 
-Link is a local-first Bun + React graph tracker for flexible work-related entities and relationships. Graph data is stored as canonical, Git-friendly JSON files under `./.data/graph` after the first save; Git is the history, collaboration, backup, and conflict-resolution layer.
+Link is a tool to track relationships between entities in an agent-friendly way. Build and query knowledge graphs through a simple API, WebSocket interface, or MCP.
 
 ## Features
 
-- Dynamic node types and edge types.
-- Directed and bidirectional edges.
-- Metadata schemas for declared fields, while preserving unknown metadata fields.
-- One JSON file per graph record with slug IDs mapped directly to file names.
-- Explicit bootstrap of default node and edge types with `--seed`.
-- Deterministic HTTP APIs, realtime WebSocket refresh, and local-only MCP tools.
-- Validation CLI for catching malformed JSON, merge conflicts, and broken references.
+- Model people, projects, documents, systems, or any other domain with custom node and edge types.
+- Capture both directional and mutual relationships so the graph matches how your data actually connects.
+- Keep structured metadata on records without blocking extra fields that matter to your workflow.
+- Query and update the same graph from the web app, HTTP API, WebSocket clients, or MCP-compatible agents.
+- Start quickly with built-in starter types for an empty graph, or define your own model from scratch.
+- Store graph data as plain JSON files that are easy to inspect, diff, review, and version with Git.
+- Validate the graph before committing to catch malformed records, broken references, and merge issues early.
 
 ## Installation
 
@@ -64,18 +64,17 @@ The default graph path is `./.data/graph`, but Link does not create `.data` or g
       ada-lovelace-works-on-link.json
 ```
 
-Each record is pretty-printed JSON with deterministic top-level key order and a trailing newline. Deletes remove files; Git keeps the historical copy. Link never runs Git commands for you.
-
 If the graph is empty and you want the built-in starter types, run `bun src/index.ts --seed`. Seeding is skipped when any graph JSON records already exist, so it will not backfill defaults into an existing graph.
 
-## Git workflow
+## Collaborative Link with Git workflow
 
-1. `git pull`.
-2. Run Link locally and edit through the UI, HTTP API, or MCP tools. Use `bun src/index.ts --seed` first only when you want default types in an empty graph.
-3. Inspect JSON changes under `.data/graph`.
-4. `bun src/index.ts --validate`.
-5. `git add .data/graph && git commit`.
-6. `git pull --rebase` or merge, resolve JSON conflicts, re-run validation, then push.
+1. Create a new, emtpy Git repository.
+1. Run Link locally and edit through the UI, HTTP API, or MCP tools. Use `linkserver --seed` first only when you want default types in an empty graph.
+1. Inspect JSON changes under `.data/graph`.
+1. `git add .data/graph && git commit`.
+1. `git pull` and merge or resolve JSON conflicts.
+1. Run `linkserver --validate` to ensure the graph is consistent.
+1. `git push`.
 
 ## Configuration
 
@@ -111,8 +110,6 @@ Core endpoints:
 - `GET /api/search?q=...`
 - `GET /api/nodes/:id/context`
 
-Mutations do not require `expectedVersion`; invalid graph references fail with clear validation errors.
-
 Example:
 
 ```bash
@@ -125,7 +122,7 @@ This example assumes the `person` node type already exists, either from `--seed`
 
 ## Realtime updates
 
-Connect a WebSocket client to `/api/realtime`. Successful graph mutations broadcast `graph.changed` events without graph versions. Clients should refetch `/api/graph` after receiving a change event.
+Connect a WebSocket client to `/api/realtime`. Successful graph mutations broadcast `graph.changed` events. Clients should refetch `/api/graph` after receiving a change event.
 
 ## MCP / agent usage
 
@@ -135,7 +132,7 @@ The `/mcp` endpoint is a standard MCP Streamable HTTP transport powered by `@mod
 http://localhost:3000/mcp
 ```
 
-The server exposes local graph tools through MCP `tools/list` and `tools/call`, including `get_graph`, `search_graph`, `get_node_context`, and type/node/edge mutation tools. There is no auth and no `expectedVersion`.
+The server exposes local graph tools through MCP `tools/list` and `tools/call`, including `get_graph`, `search_graph`, `get_node_context`, and type/node/edge mutation tools.
 
 Agent workflow guidance is documented in `docs/link-agent-instructions.md`.
 
