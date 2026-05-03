@@ -134,7 +134,7 @@ http://localhost:3000/mcp
 
 The server exposes local graph tools through MCP `tools/list` and `tools/call`, including `get_graph`, `search_graph`, `get_node_context`, and type/node/edge mutation tools.
 
-Agent workflow guidance is documented in `docs/link-agent-instructions.md`.
+Agent workflow guidance is packaged as the Agent Skills-compatible skill in `skills/link/SKILL.md`.
 
 ## Container usage
 
