@@ -7,7 +7,6 @@ set -e
 REPO="pablozaiden/link"
 INSTALL_DIR="${INSTALL_DIR:-$HOME/.local/bin}"
 BINARY_NAME="linkserver"
-LEGACY_BINARY_NAME="link"
 
 make_temp_file() {
   case "$OS" in
@@ -83,7 +82,6 @@ echo "Latest version: $LATEST_TAG"
 mkdir -p "$INSTALL_DIR"
 
 ASSET_NAME="$BINARY_NAME-$LATEST_TAG-$OS-$ARCH"
-LEGACY_ASSET_NAME="$LEGACY_BINARY_NAME-$LATEST_TAG-$OS-$ARCH"
 DOWNLOAD_URL="https://github.com/$REPO/releases/download/$LATEST_TAG/$ASSET_NAME"
 CHECKSUM_NAME="$ASSET_NAME.sha256"
 CHECKSUM_URL="$DOWNLOAD_URL.sha256"
@@ -98,16 +96,8 @@ trap cleanup EXIT
 
 echo "Downloading $ASSET_NAME..."
 if ! curl -fsSL "$DOWNLOAD_URL" -o "$TEMP_FILE"; then
-  LEGACY_DOWNLOAD_URL="https://github.com/$REPO/releases/download/$LATEST_TAG/$LEGACY_ASSET_NAME"
-  echo "Could not download $ASSET_NAME; trying legacy asset $LEGACY_ASSET_NAME..."
-  if ! curl -fsSL "$LEGACY_DOWNLOAD_URL" -o "$TEMP_FILE"; then
-    echo "Error: Failed to download from $DOWNLOAD_URL or $LEGACY_DOWNLOAD_URL"
-    exit 1
-  fi
-  ASSET_NAME="$LEGACY_ASSET_NAME"
-  DOWNLOAD_URL="$LEGACY_DOWNLOAD_URL"
-  CHECKSUM_NAME="$ASSET_NAME.sha256"
-  CHECKSUM_URL="$DOWNLOAD_URL.sha256"
+  echo "Error: Failed to download from $DOWNLOAD_URL"
+  exit 1
 fi
 
 echo "Downloading $CHECKSUM_NAME..."
