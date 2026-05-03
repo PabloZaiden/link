@@ -1,7 +1,6 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { WebStandardStreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js";
 import * as z from "zod/v4";
-import type { AuthProvider } from "../auth/actor";
 import { GraphError } from "../domain/errors";
 import { isJsonMap } from "../graph/input";
 import type { RealtimeHub } from "../realtime/hub";
@@ -12,11 +11,6 @@ const jsonObjectSchema = z.record(z.string(), z.unknown());
 const edgeDirectionSchema = z.enum(["directed", "bidirectional"]);
 const optionalStringSchema = z.string().nullish();
 const optionalJsonObjectSchema = jsonObjectSchema.nullish();
-const expectedVersionSchema = z
-  .union([z.number(), z.string()])
-  .refine(value => value !== "" && Number.isInteger(Number(value)) && Number(value) >= 0, "Expected a non-negative integer.")
-  .transform(value => Number(value))
-  .describe("Latest graph version observed before making this mutation.");
 
 type ToolInputShape = z.ZodRawShape;
 
@@ -29,20 +23,17 @@ interface LinkToolDefinition {
 
 const emptyInput: ToolInputShape = {};
 const idInput: ToolInputShape = { id: z.string().min(1) };
-const expectedVersionInput: ToolInputShape = { expectedVersion: expectedVersionSchema };
 const typeCreateInput: ToolInputShape = {
   id: optionalStringSchema,
   name: z.string().min(1),
   description: optionalStringSchema,
   metadataSchema: optionalJsonObjectSchema,
-  ...expectedVersionInput,
 };
 const typeUpdateInput: ToolInputShape = {
   ...idInput,
   name: optionalStringSchema,
   description: optionalStringSchema,
   metadataSchema: optionalJsonObjectSchema,
-  ...expectedVersionInput,
 };
 const nodeCreateInput: ToolInputShape = {
   id: optionalStringSchema,
@@ -50,7 +41,6 @@ const nodeCreateInput: ToolInputShape = {
   typeId: z.string().min(1),
   description: optionalStringSchema,
   metadata: optionalJsonObjectSchema,
-  ...expectedVersionInput,
 };
 const nodeUpdateInput: ToolInputShape = {
   ...idInput,
@@ -58,7 +48,6 @@ const nodeUpdateInput: ToolInputShape = {
   typeId: optionalStringSchema,
   description: optionalStringSchema,
   metadata: optionalJsonObjectSchema,
-  ...expectedVersionInput,
 };
 const edgeCreateInput: ToolInputShape = {
   id: optionalStringSchema,
@@ -68,7 +57,6 @@ const edgeCreateInput: ToolInputShape = {
   direction: edgeDirectionSchema,
   description: optionalStringSchema,
   metadata: optionalJsonObjectSchema,
-  ...expectedVersionInput,
 };
 const edgeUpdateInput: ToolInputShape = {
   ...idInput,
@@ -78,11 +66,9 @@ const edgeUpdateInput: ToolInputShape = {
   direction: edgeDirectionSchema.nullish(),
   description: optionalStringSchema,
   metadata: optionalJsonObjectSchema,
-  ...expectedVersionInput,
 };
 const deleteInput: ToolInputShape = {
   ...idInput,
-  ...expectedVersionInput,
 };
 
 export const linkMcpTools: LinkToolDefinition[] = [
@@ -101,30 +87,28 @@ export const linkMcpTools: LinkToolDefinition[] = [
   },
   { name: "create_node", title: "Create Node", description: "Create a graph node.", inputSchema: nodeCreateInput },
   { name: "update_node", title: "Update Node", description: "Update an existing graph node.", inputSchema: nodeUpdateInput },
-  { name: "delete_node", title: "Delete Node", description: "Delete a graph node using Link tombstone semantics.", inputSchema: deleteInput },
+  { name: "delete_node", title: "Delete Node", description: "Delete a graph node and its connected edges.", inputSchema: deleteInput },
   { name: "create_edge", title: "Create Edge", description: "Create a graph edge.", inputSchema: edgeCreateInput },
   { name: "update_edge", title: "Update Edge", description: "Update an existing graph edge.", inputSchema: edgeUpdateInput },
-  { name: "delete_edge", title: "Delete Edge", description: "Delete a graph edge using Link tombstone semantics.", inputSchema: deleteInput },
+  { name: "delete_edge", title: "Delete Edge", description: "Delete a graph edge.", inputSchema: deleteInput },
   { name: "create_node_type", title: "Create Node Type", description: "Create a node type definition.", inputSchema: typeCreateInput },
   { name: "update_node_type", title: "Update Node Type", description: "Update a node type definition.", inputSchema: typeUpdateInput },
   { name: "delete_node_type", title: "Delete Node Type", description: "Delete a node type definition.", inputSchema: deleteInput },
   { name: "create_edge_type", title: "Create Edge Type", description: "Create an edge type definition.", inputSchema: typeCreateInput },
   { name: "update_edge_type", title: "Update Edge Type", description: "Update an edge type definition.", inputSchema: typeUpdateInput },
   { name: "delete_edge_type", title: "Delete Edge Type", description: "Delete an edge type definition.", inputSchema: deleteInput },
-  { name: "get_history", title: "Get History", description: "Return append-only graph change history.", inputSchema: emptyInput },
-  { name: "export_graph", title: "Export Graph", description: "Return a full graph export including tombstones and history.", inputSchema: emptyInput },
 ];
 
 if (linkMcpTools.map(tool => tool.name).join("\n") !== linkMcpToolNames.join("\n")) {
   throw new Error("Link MCP tool registry is out of sync with tool executor names.");
 }
 
-export function createLinkMcpServer(deps: { repository: GraphRepository; auth: AuthProvider; realtime: RealtimeHub; request: Request }): McpServer {
+export function createLinkMcpServer(deps: { repository: GraphRepository; realtime: RealtimeHub; request: Request }): McpServer {
   const server = new McpServer(
     { name: "link", version: "0.1.0" },
     {
       instructions:
-        "Use Link tools to read and update a small graph of work-related entities. Include expectedVersion from the latest graph snapshot for every mutation.",
+        "Use Link tools to read and update a local Git-backed graph of work-related entities. Mutations are local-only and do not require auth or expectedVersion.",
     },
   );
 
@@ -141,7 +125,6 @@ export function createLinkMcpServer(deps: { repository: GraphRepository; auth: A
           const result = callLinkTool(tool.name, args as JsonMap, {
             repository: deps.repository,
             realtime: deps.realtime,
-            actor: deps.auth.actorForRequest(deps.request),
           });
           return {
             content: [{ type: "text" as const, text: JSON.stringify(result) }],
@@ -163,7 +146,7 @@ export function createLinkMcpServer(deps: { repository: GraphRepository; auth: A
   return server;
 }
 
-export async function handleMcpRequest(deps: { repository: GraphRepository; auth: AuthProvider; realtime: RealtimeHub; request: Request }): Promise<Response> {
+export async function handleMcpRequest(deps: { repository: GraphRepository; realtime: RealtimeHub; request: Request }): Promise<Response> {
   const transport = new WebStandardStreamableHTTPServerTransport({
     enableJsonResponse: true,
     sessionIdGenerator: undefined,

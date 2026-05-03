@@ -28,7 +28,6 @@ export interface GraphEdge {
 }
 
 export interface GraphSnapshot {
-  version: number;
   nodeTypes: TypeDefinition[];
   edgeTypes: TypeDefinition[];
   nodes: GraphNode[];
@@ -56,4 +55,4 @@ export interface TypeFilterControlProps {
   onChange: (ids: string[]) => void;
 }
 
-export const emptyGraph: GraphSnapshot = { version: 0, nodeTypes: [], edgeTypes: [], nodes: [], edges: [] };
+export const emptyGraph: GraphSnapshot = { nodeTypes: [], edgeTypes: [], nodes: [], edges: [] };

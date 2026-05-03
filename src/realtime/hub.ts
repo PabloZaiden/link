@@ -2,7 +2,6 @@ import type { ServerWebSocket } from "bun";
 
 export interface GraphChangeEvent {
   type: "graph.changed";
-  version: number;
   recordType: string;
   recordId: string;
   operation: string;
@@ -31,4 +30,3 @@ export class RealtimeHub {
     }
   }
 }
-

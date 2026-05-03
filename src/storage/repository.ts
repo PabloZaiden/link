@@ -1,21 +1,4 @@
-import type {
-  Actor,
-  DeleteResult,
-  EdgeDirection,
-  EdgeTypeDefinition,
-  FullGraphExport,
-  GraphChange,
-  GraphContext,
-  GraphEdge,
-  GraphNode,
-  GraphSnapshot,
-  Metadata,
-  MetadataSchema,
-  MutationResult,
-  NodeTypeDefinition,
-  SearchResult,
-  WriteOptions,
-} from "../domain/types";
+import type { DeleteResult, EdgeDirection, EdgeTypeDefinition, GraphContext, GraphEdge, GraphNode, GraphSnapshot, Metadata, MetadataSchema, MutationResult, NodeTypeDefinition, SearchResult } from "../domain/types";
 
 export interface TypeInput {
   id?: string;
@@ -43,26 +26,20 @@ export interface EdgeInput {
 }
 
 export interface GraphRepository {
-  getSnapshot(options?: { includeDeleted?: boolean }): GraphSnapshot;
-  getHistory(): GraphChange[];
-  getHistoryVersion(version: number): GraphChange | null;
+  getSnapshot(): GraphSnapshot;
   search(query: string): SearchResult;
   getContext(nodeId: string): GraphContext;
-  createNodeType(input: TypeInput, options: WriteOptions): MutationResult<NodeTypeDefinition>;
-  updateNodeType(id: string, input: Partial<TypeInput>, options: WriteOptions): MutationResult<NodeTypeDefinition>;
-  deleteNodeType(id: string, options: WriteOptions): DeleteResult;
-  createEdgeType(input: TypeInput, options: WriteOptions): MutationResult<EdgeTypeDefinition>;
-  updateEdgeType(id: string, input: Partial<TypeInput>, options: WriteOptions): MutationResult<EdgeTypeDefinition>;
-  deleteEdgeType(id: string, options: WriteOptions): DeleteResult;
-  createNode(input: NodeInput, options: WriteOptions): MutationResult<GraphNode>;
-  updateNode(id: string, input: Partial<NodeInput>, options: WriteOptions): MutationResult<GraphNode>;
-  deleteNode(id: string, options: WriteOptions): DeleteResult;
-  createEdge(input: EdgeInput, options: WriteOptions): MutationResult<GraphEdge>;
-  updateEdge(id: string, input: Partial<EdgeInput>, options: WriteOptions): MutationResult<GraphEdge>;
-  deleteEdge(id: string, options: WriteOptions): DeleteResult;
-  seedBootstrap(actor: Actor): GraphSnapshot;
-  exportGraph(): FullGraphExport;
-  importGraph(payload: FullGraphExport, actor: Actor): GraphSnapshot;
+  createNodeType(input: TypeInput): MutationResult<NodeTypeDefinition>;
+  updateNodeType(id: string, input: Partial<TypeInput>): MutationResult<NodeTypeDefinition>;
+  deleteNodeType(id: string): DeleteResult;
+  createEdgeType(input: TypeInput): MutationResult<EdgeTypeDefinition>;
+  updateEdgeType(id: string, input: Partial<TypeInput>): MutationResult<EdgeTypeDefinition>;
+  deleteEdgeType(id: string): DeleteResult;
+  createNode(input: NodeInput): MutationResult<GraphNode>;
+  updateNode(id: string, input: Partial<NodeInput>): MutationResult<GraphNode>;
+  deleteNode(id: string): DeleteResult;
+  createEdge(input: EdgeInput): MutationResult<GraphEdge>;
+  updateEdge(id: string, input: Partial<EdgeInput>): MutationResult<GraphEdge>;
+  deleteEdge(id: string): DeleteResult;
   close(): void;
 }
-
