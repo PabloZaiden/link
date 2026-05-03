@@ -6,12 +6,12 @@ set -e
 
 REPO="pablozaiden/link"
 INSTALL_DIR="${INSTALL_DIR:-$HOME/.local/bin}"
-BINARY_NAME="link"
+BINARY_NAME="linkserver"
 
 make_temp_file() {
   case "$OS" in
-    darwin) mktemp -t link.XXXXXX ;;
-    *) mktemp "${TMPDIR:-/tmp}/link.XXXXXX" ;;
+    darwin) mktemp -t linkserver.XXXXXX ;;
+    *) mktemp "${TMPDIR:-/tmp}/linkserver.XXXXXX" ;;
   esac
 }
 
@@ -122,7 +122,7 @@ case ":$PATH:" in
   *":$INSTALL_DIR:"*)
     echo ""
     echo "Installation complete!"
-    echo "Run 'link' to start Link."
+    echo "Run '$BINARY_NAME' to start Link."
     ;;
   *)
     echo ""
