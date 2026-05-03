@@ -23,7 +23,7 @@ jobs:
       - name: Validate graph data
         run: |
           test -d ./data/graph
-          LINK_DATA_DIR=./data bun src/index.ts --validate
+          bun src/index.ts --validate
 
       - name: Test
         run: bun test
