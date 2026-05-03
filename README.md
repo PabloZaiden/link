@@ -12,6 +12,16 @@ Link is a local-first Bun + React graph tracker for flexible work-related entiti
 - Deterministic HTTP APIs, realtime WebSocket refresh, and local-only MCP tools.
 - Validation CLI for catching malformed JSON, merge conflicts, and broken references.
 
+## Installation
+
+Install the latest Linux or macOS binary release:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/pablozaiden/link/main/install.sh | sh
+```
+
+The installer downloads the latest release for your platform and installs it as `link` in `$HOME/.local/bin`. If that directory is not on your `PATH`, the installer prints the shell profile line to add.
+
 ## Local development
 
 ```bash
