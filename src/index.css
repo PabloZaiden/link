@@ -10,7 +10,7 @@
   }
 
   button {
-    @apply rounded-lg border border-zinc-700 bg-zinc-800 px-3 py-2 text-sm font-semibold text-zinc-100 transition hover:border-violet-400/50 hover:bg-zinc-700 disabled:cursor-not-allowed disabled:border-zinc-800 disabled:bg-zinc-800 disabled:text-zinc-500;
+    @apply h-[38px] rounded-lg border border-zinc-700 bg-zinc-800 px-3 py-2 text-sm font-semibold leading-5 text-zinc-100 transition hover:border-violet-400/50 hover:bg-zinc-700 disabled:cursor-not-allowed disabled:border-zinc-800 disabled:bg-zinc-800 disabled:text-zinc-500;
   }
 
   button.danger {
@@ -36,7 +36,7 @@
   input,
   select,
   textarea {
-    @apply w-full rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm text-zinc-100 placeholder:text-zinc-500 outline-none focus:border-stone-400;
+    @apply h-[38px] w-full rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm leading-5 text-zinc-100 placeholder:text-zinc-500 outline-none focus:border-stone-400;
   }
 
   form {
@@ -78,7 +78,7 @@
 
 .filter-menu__summary {
   display: flex;
-  min-height: 42px;
+  height: 38px;
   cursor: pointer;
   list-style: none;
   align-items: center;
@@ -87,7 +87,7 @@
   border-radius: 0.5rem;
   border: 1px solid rgb(63 63 70);
   background: rgb(9 9 11);
-  padding: 0.625rem 0.75rem;
+  padding: 0.5rem 0.75rem;
   color: rgb(244 244 245);
 }
 
