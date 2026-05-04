@@ -22,6 +22,16 @@ curl -fsSL https://raw.githubusercontent.com/pablozaiden/link/main/install.sh | 
 
 The installer downloads the latest release for your platform and installs it as `link-cli` in `$HOME/.local/bin`. If that directory is not on your `PATH`, the installer prints the shell profile line to add.
 
+Installed binaries can check for or install release updates:
+
+```bash
+link-cli update --check
+link-cli update
+link-cli update --version 0.1.0
+```
+
+The update command works from an installed `link-cli` binary. When running from source, use the installer or download a release binary instead.
+
 ## Local development
 
 ```bash
@@ -47,19 +57,21 @@ bun run build
 
 ## CLI usage
 
-Running `link-cli` with no arguments shows the available top-level commands:
+Running `link-cli` with no arguments shows the current CLI version and available top-level commands:
 
 ```bash
 link-cli
 link-cli web
 link-cli validate
 link-cli seed
+link-cli update --check
 link-cli graph
 ```
 
 - `web` starts the web UI, HTTP API, realtime endpoint, and MCP endpoint.
 - `validate` validates graph JSON files.
 - `seed` creates the default graph node and edge types when the graph is empty.
+- `update` checks for or installs newer release binaries.
 - `graph` exposes the same graph actions as the MCP server for direct CLI use.
 
 Graph CLI action names match MCP tool names exactly. Use `link-cli graph` to list actions and `link-cli graph <action> --help` for action-specific help:

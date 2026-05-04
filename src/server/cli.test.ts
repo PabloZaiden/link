@@ -1,7 +1,8 @@
 import { describe, expect, test } from "bun:test";
 import { GraphError } from "../domain/errors";
 import { graphToolNames } from "../graph/tools";
-import { formatGraphActionHelp, formatGraphHelp, parseCliCommand, parseGraphActionArgs } from "./cli";
+import { LINK_VERSION } from "../version";
+import { formatGraphActionHelp, formatGraphHelp, formatTopLevelHelp, parseCliCommand, parseGraphActionArgs } from "./cli";
 
 describe("parseCliCommand", () => {
   test("defaults to top-level help", () => {
@@ -12,6 +13,34 @@ describe("parseCliCommand", () => {
     expect(parseCliCommand(["bun", "src/index.ts", "web"])).toEqual({ kind: "web" });
     expect(parseCliCommand(["bun", "src/index.ts", "validate"])).toEqual({ kind: "validate" });
     expect(parseCliCommand(["bun", "src/index.ts", "seed"])).toEqual({ kind: "seed" });
+    expect(parseCliCommand(["bun", "src/index.ts", "update"])).toEqual({ kind: "update", checkOnly: false, version: undefined });
+  });
+
+  test("parses update options", () => {
+    expect(parseCliCommand(["bun", "src/index.ts", "update", "--check"])).toEqual({
+      kind: "update",
+      checkOnly: true,
+      version: undefined,
+    });
+    expect(parseCliCommand(["bun", "src/index.ts", "update", "--version", "v1.2.3"])).toEqual({
+      kind: "update",
+      checkOnly: false,
+      version: "v1.2.3",
+    });
+    expect(parseCliCommand(["bun", "src/index.ts", "update", "--version=1.2.3"])).toEqual({
+      kind: "update",
+      checkOnly: false,
+      version: "1.2.3",
+    });
+  });
+
+  test("rejects invalid update options", () => {
+    expect(() => parseCliCommand(["bun", "src/index.ts", "update", "extra"])).toThrow(GraphError);
+    expect(() => parseCliCommand(["bun", "src/index.ts", "update", "--missing"])).toThrow(GraphError);
+    expect(() => parseCliCommand(["bun", "src/index.ts", "update", "--version"])).toThrow(GraphError);
+    expect(() => parseCliCommand(["bun", "src/index.ts", "update", "--version", "   "])).toThrow(GraphError);
+    expect(() => parseCliCommand(["bun", "src/index.ts", "update", "--version=   "])).toThrow(GraphError);
+    expect(() => parseCliCommand(["bun", "src/index.ts", "update", "--check", "--version", "1.2.3"])).toThrow(GraphError);
   });
 
   test("rejects legacy flags and web seed", () => {
@@ -66,6 +95,12 @@ describe("parseGraphActionArgs", () => {
 });
 
 describe("graph help", () => {
+  test("top-level help prints the CLI version and update command", () => {
+    const help = formatTopLevelHelp();
+    expect(help).toStartWith(`link-cli ${LINK_VERSION}`);
+    expect(help).toContain("update");
+  });
+
   test("lists graph actions from the shared registry", () => {
     const help = formatGraphHelp();
     for (const name of graphToolNames) {
