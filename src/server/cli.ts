@@ -1,11 +1,13 @@
 import { GraphError } from "../domain/errors";
 import { getGraphTool, graphTools, isGraphToolName, type GraphToolName, type JsonMap } from "../graph/tools";
+import { formatLinkVersion } from "../version";
 
 export type CliCommand =
   | { kind: "help" }
   | { kind: "web" }
   | { kind: "validate" }
   | { kind: "seed" }
+  | { kind: "update"; checkOnly: boolean; version?: string }
   | { kind: "graph-help" }
   | { kind: "graph-action-help"; action: GraphToolName }
   | { kind: "graph-action"; action: GraphToolName; args: JsonMap };
@@ -63,6 +65,42 @@ function readFlagValue(args: string[], index: number, field: string): { value: s
     usageError(`--${field} requires a value.`);
   }
   return { value: next, nextIndex: index + 1 };
+}
+
+function parseUpdateCommand(args: string[]): Extract<CliCommand, { kind: "update" }> {
+  let checkOnly = false;
+  let version: string | undefined;
+
+  for (let i = 0; i < args.length; i++) {
+    const arg = args[i];
+    if (arg === undefined) continue;
+    if (!arg.startsWith("--")) usageError(`Unexpected positional argument "${arg}".`);
+
+    if (arg === "--check") {
+      checkOnly = true;
+      continue;
+    }
+
+    if (arg === "--version") {
+      const value = args[i + 1];
+      if (value === undefined || value.startsWith("--")) usageError("--version requires a value.");
+      version = value.trim();
+      i += 1;
+      continue;
+    }
+
+    if (arg.startsWith("--version=")) {
+      version = arg.slice("--version=".length).trim();
+      if (!version) usageError("--version requires a value.");
+      continue;
+    }
+
+    usageError("Unknown update option.", { option: arg });
+  }
+
+  if (checkOnly && version !== undefined) usageError("Cannot combine --check with --version.");
+
+  return { kind: "update", checkOnly, version };
 }
 
 export function parseGraphActionArgs(args: string[], allowedFields = allGraphFields): JsonMap {
@@ -125,6 +163,10 @@ export function parseCliCommand(argv: string[]): CliCommand {
     return { kind: "seed" };
   }
 
+  if (command === "update") {
+    return parseUpdateCommand(rest);
+  }
+
   if (command === "graph") {
     const [action, ...actionArgs] = rest;
     if (action === undefined || action === "--help" || action === "-h") return { kind: "graph-help" };
@@ -140,6 +182,8 @@ export function parseCliCommand(argv: string[]): CliCommand {
 
 export function formatTopLevelHelp(binaryName = "link-cli"): string {
   return [
+    formatLinkVersion(binaryName),
+    "",
     "Usage:",
     `  ${binaryName} <command>`,
     "",
@@ -147,6 +191,7 @@ export function formatTopLevelHelp(binaryName = "link-cli"): string {
     "  web       Start the web UI, HTTP API, realtime endpoint, and MCP endpoint.",
     "  validate  Validate graph JSON files.",
     "  seed      Create default graph types when the graph is empty.",
+    "  update    Check for or install newer Link release binaries.",
     "  graph     Run graph actions directly from the CLI.",
     "",
     `Run "${binaryName} graph" to list graph actions.`,

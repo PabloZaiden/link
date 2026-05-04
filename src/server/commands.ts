@@ -1,7 +1,9 @@
 import { GraphError } from "../domain/errors";
 import { callGraphTool } from "../graph/tools";
 import { JsonGraphRepository, validateGraphPath } from "../storage/json";
+import { LINK_VERSION } from "../version";
 import { loadConfig } from "./config";
+import { runUpdateCommand } from "./update";
 import {
   formatGraphActionHelp,
   formatGraphHelp,
@@ -18,7 +20,7 @@ function printGraphError(error: GraphError): void {
   if (error.details !== undefined) console.error(JSON.stringify(error.details, null, 2));
 }
 
-export function runCliCommand(command: CliCommand): number | undefined {
+export async function runCliCommand(command: CliCommand): Promise<number | undefined> {
   try {
     switch (command.kind) {
       case "help":
@@ -30,6 +32,8 @@ export function runCliCommand(command: CliCommand): number | undefined {
         return runValidateCommand();
       case "seed":
         return runSeedCommand();
+      case "update":
+        return await runUpdateCommand(command, { currentVersion: LINK_VERSION });
       case "graph-help":
         console.log(formatGraphHelp());
         return 0;

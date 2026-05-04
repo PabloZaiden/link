@@ -21,6 +21,6 @@ try {
 if (command.kind === "web") {
   startApp(index);
 } else {
-  const exitCode = runCliCommand(command);
+  const exitCode = await runCliCommand(command);
   process.exit(exitCode ?? 0);
 }
