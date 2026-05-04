@@ -48,6 +48,11 @@ describe("parseCliCommand", () => {
   test("rejects unknown graph actions", () => {
     expect(() => parseCliCommand(["bun", "src/index.ts", "graph", "missing"])).toThrow(GraphError);
   });
+
+  test("rejects graph flags that are not supported by the selected action", () => {
+    expect(() => parseCliCommand(["bun", "src/index.ts", "graph", "delete_node", "--query", "ada"])).toThrow(GraphError);
+    expect(() => parseCliCommand(["bun", "src/index.ts", "graph", "search_graph", "--nodeId", "ada"])).toThrow(GraphError);
+  });
 });
 
 describe("parseGraphActionArgs", () => {

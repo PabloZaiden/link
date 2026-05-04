@@ -1,5 +1,5 @@
 import { GraphError } from "../domain/errors";
-import { graphTools, isGraphToolName, type GraphToolName, type JsonMap } from "../graph/tools";
+import { getGraphTool, graphTools, isGraphToolName, type GraphToolName, type JsonMap } from "../graph/tools";
 
 export type CliCommand =
   | { kind: "help" }
@@ -65,7 +65,7 @@ function readFlagValue(args: string[], index: number, field: string): { value: s
   return { value: next, nextIndex: index + 1 };
 }
 
-export function parseGraphActionArgs(args: string[]): JsonMap {
+export function parseGraphActionArgs(args: string[], allowedFields = allGraphFields): JsonMap {
   const parsed: JsonMap = {};
 
   for (let i = 0; i < args.length; i++) {
@@ -87,7 +87,7 @@ export function parseGraphActionArgs(args: string[]): JsonMap {
       continue;
     }
 
-    if (!allGraphFields.has(field)) usageError(`Unknown graph argument --${field}.`, { field });
+    if (!allowedFields.has(field)) usageError(`Unsupported argument --${field} for graph action.`, { field });
 
     const { value, nextIndex } = inlineValue === undefined ? readFlagValue(args, i, field) : { value: inlineValue, nextIndex: i };
     i = nextIndex;
@@ -132,7 +132,7 @@ export function parseCliCommand(argv: string[]): CliCommand {
     if (actionArgs.length === 1 && (actionArgs[0] === "--help" || actionArgs[0] === "-h")) {
       return { kind: "graph-action-help", action };
     }
-    return { kind: "graph-action", action, args: parseGraphActionArgs(actionArgs) };
+    return { kind: "graph-action", action, args: parseGraphActionArgs(actionArgs, new Set(getGraphTool(action).cliFields)) };
   }
 
   usageError("Unknown command.", { command });

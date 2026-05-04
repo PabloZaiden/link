@@ -1,5 +1,5 @@
 import { createHash } from "crypto";
-import { existsSync, readdirSync, readFileSync, statSync } from "fs";
+import { existsSync, readdirSync, statSync } from "fs";
 import path from "path";
 import { validateGraphPath } from "../storage/json";
 import type { RealtimeHub } from "../realtime/hub";
@@ -9,19 +9,32 @@ export interface GraphMonitor {
   checkNow(): void;
 }
 
-function collectFiles(root: string): string[] {
-  if (!existsSync(root)) return [];
-  const stat = statSync(root);
-  if (!stat.isDirectory()) return [root];
+const graphCollectionDirs = ["node-types", "edge-types", "nodes", "edges"] as const;
 
+function isManagedGraphFile(fileName: string): boolean {
+  const lowerName = fileName.toLowerCase();
+  return (
+    fileName.endsWith(".json") &&
+    !fileName.startsWith(".") &&
+    !fileName.endsWith("~") &&
+    !lowerName.endsWith(".tmp") &&
+    !lowerName.endsWith(".swp") &&
+    !lowerName.endsWith(".swo")
+  );
+}
+
+function collectManagedGraphFiles(root: string): string[] {
+  if (!existsSync(root) || !statSync(root).isDirectory()) return [];
   const files: string[] = [];
-  for (const entry of readdirSync(root).sort()) {
-    const entryPath = path.join(root, entry);
-    const entryStat = statSync(entryPath);
-    if (entryStat.isDirectory()) {
-      files.push(...collectFiles(entryPath));
-    } else if (entryStat.isFile()) {
-      files.push(entryPath);
+  for (const dirName of graphCollectionDirs) {
+    const dirPath = path.join(root, dirName);
+    if (!existsSync(dirPath) || !statSync(dirPath).isDirectory()) continue;
+    for (const entry of readdirSync(dirPath).sort()) {
+      if (!isManagedGraphFile(entry)) continue;
+      const entryPath = path.join(dirPath, entry);
+      if (statSync(entryPath).isFile()) {
+        files.push(entryPath);
+      }
     }
   }
   return files;
@@ -29,11 +42,14 @@ function collectFiles(root: string): string[] {
 
 export function fingerprintGraphPath(graphPath: string): string {
   const hash = createHash("sha256");
-  for (const filePath of collectFiles(graphPath)) {
+  for (const filePath of collectManagedGraphFiles(graphPath)) {
+    const stat = statSync(filePath);
     const relativePath = path.relative(graphPath, filePath);
     hash.update(relativePath);
     hash.update("\0");
-    hash.update(readFileSync(filePath));
+    hash.update(String(stat.size));
+    hash.update("\0");
+    hash.update(String(stat.mtimeMs));
     hash.update("\0");
   }
   return hash.digest("hex");

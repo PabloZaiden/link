@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { mkdtempSync, rmSync } from "fs";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "fs";
 import { tmpdir } from "os";
 import path from "path";
 import { RealtimeHub } from "../realtime/hub";
@@ -23,6 +23,27 @@ describe("fingerprintGraphPath", () => {
       repository.createNodeType({ name: "Person" });
       const after = fingerprintGraphPath(graphPath);
       expect(after).not.toBe(before);
+    } finally {
+      cleanup(graphPath);
+    }
+  });
+
+  test("ignores filesystem noise outside managed graph record files", () => {
+    const graphPath = tempGraphPath();
+    try {
+      const repository = new JsonGraphRepository(graphPath);
+      repository.createNodeType({ name: "Person" });
+      const before = fingerprintGraphPath(graphPath);
+
+      mkdirSync(path.join(graphPath, ".cache"), { recursive: true });
+      writeFileSync(path.join(graphPath, ".cache", "noise.json"), "{}", "utf8");
+      writeFileSync(path.join(graphPath, "notes.json"), "{}", "utf8");
+      writeFileSync(path.join(graphPath, "node-types", ".person.json.tmp"), "{}", "utf8");
+      writeFileSync(path.join(graphPath, "node-types", "person.json.tmp"), "{}", "utf8");
+      writeFileSync(path.join(graphPath, "node-types", "person.json.swp"), "{}", "utf8");
+      writeFileSync(path.join(graphPath, "node-types", "person.json~"), "{}", "utf8");
+
+      expect(fingerprintGraphPath(graphPath)).toBe(before);
     } finally {
       cleanup(graphPath);
     }

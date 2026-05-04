@@ -122,7 +122,7 @@ case ":$PATH:" in
   *":$INSTALL_DIR:"*)
     echo ""
     echo "Installation complete!"
-    echo "Run '$BINARY_NAME' to start Link."
+    echo "Run '$BINARY_NAME web' to start Link."
     ;;
   *)
     echo ""
