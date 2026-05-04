@@ -33,6 +33,8 @@ interface GraphMapProps {
   onSelectNode: (id: string) => void;
   onClearSelection: () => void;
   controls: ReactNode;
+  filters?: ReactNode;
+  onFullscreenChange?: (isFullscreen: boolean) => void;
 }
 
 export function GraphMap(props: GraphMapProps) {
@@ -42,6 +44,7 @@ export function GraphMap(props: GraphMapProps) {
   const [layoutSpacing, setLayoutSpacing] = useState(1);
   const [offset, setOffset] = useState({ x: 0, y: 0 });
   const [isFullscreen, setIsFullscreen] = useState(false);
+  const onFullscreenChange = props.onFullscreenChange;
   const dragStateRef = useRef<{ startX: number; startY: number; lastX: number; lastY: number; hasDragged: boolean } | null>(null);
   const graphViewportRef = useRef<HTMLDivElement | null>(null);
   const svgRef = useRef<SVGSVGElement | null>(null);
@@ -154,14 +157,16 @@ export function GraphMap(props: GraphMapProps) {
 
   useEffect(() => {
     const handleFullscreenChange = () => {
-      setIsFullscreen(document.fullscreenElement === graphViewportRef.current);
+      const nextIsFullscreen = document.fullscreenElement === graphViewportRef.current;
+      setIsFullscreen(nextIsFullscreen);
+      onFullscreenChange?.(nextIsFullscreen);
     };
 
     document.addEventListener("fullscreenchange", handleFullscreenChange);
     handleFullscreenChange();
 
     return () => document.removeEventListener("fullscreenchange", handleFullscreenChange);
-  }, []);
+  }, [onFullscreenChange]);
 
   const toggleFullscreen = async () => {
     const viewport = graphViewportRef.current;
@@ -270,7 +275,7 @@ export function GraphMap(props: GraphMapProps) {
       ref={graphViewportRef}
       className={isFullscreen ? "graph-map-fullscreen flex h-full flex-col bg-zinc-950 p-4" : "flex h-full min-h-0 flex-col"}
     >
-      <div className="graph-map-shell relative flex-1 overflow-hidden rounded-xl border border-zinc-800 bg-zinc-950">
+      <div className="graph-map-shell relative flex-1 overflow-hidden bg-zinc-950">
         <svg
           ref={svgRef}
           viewBox={viewBox}
@@ -392,7 +397,10 @@ export function GraphMap(props: GraphMapProps) {
             )}
           </g>
         </svg>
-        <div className="absolute right-3 top-3 z-10 flex max-w-full flex-wrap justify-end gap-2">
+        <div className="absolute left-3 top-3 z-10 flex max-w-[calc(100%-1.5rem)] flex-wrap items-start justify-start gap-2">
+          {props.filters}
+        </div>
+        <div className="absolute right-3 top-3 z-10 flex max-w-[calc(100%-1.5rem)] flex-wrap items-start justify-end gap-2">
           {props.controls}
           <button type="button" className="bg-zinc-950/95 shadow-lg shadow-black/30 backdrop-blur" onClick={handleResetViewport}>
             Reset view

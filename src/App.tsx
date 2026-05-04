@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import "./index.css";
 import { EditorSidebar } from "./app/EditorSidebar";
 import { GraphMap } from "./app/GraphMap";
-import { Panel, TypeFilterControl } from "./app/components";
+import { TypeFilterControl } from "./app/components";
 import type { EditorTab, GraphContext, GraphEdge, GraphNode, GraphSnapshot, PendingSelection } from "./app/types";
 import { emptyGraph } from "./app/types";
 import { api, edgeDirectionFormValue, formBooleanValue, formValue, metadataFormValue, parseJsonObject, stableStringify } from "./app/utils";
@@ -445,6 +445,55 @@ export function App() {
   const deleteEdgeType = (id: string) =>
     run("Edge type deleted.", () => api(`/api/edge-types/${id}`, { method: "DELETE" }));
 
+  const renderFilters = () => (
+    <div
+      id="graph-filter-panel"
+      className="grid w-full max-w-5xl gap-3 lg:w-[min(64rem,calc(100vw-28rem))] lg:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)_minmax(0,1fr)]"
+    >
+      <div className="graph-search">
+        <input value={search} onChange={event => setSearch(event.target.value)} placeholder="Search nodes..." />
+        {search.trim() && (
+          <div className="graph-search__results">
+            {nodeSearchMatches.length === 0 ? (
+              <p className="graph-search__empty">No matching nodes.</p>
+            ) : (
+              nodeSearchMatches.map(node => (
+                <button
+                  type="button"
+                  key={node.id}
+                  className={node.id === selectedNode?.id ? "item selected" : "item"}
+                  onClick={() => {
+                    maybeRequestSelection({ nodeId: node.id, edgeId: "" });
+                    setSearch("");
+                  }}
+                >
+                  <span>
+                    <strong>{node.name}</strong>
+                    <small>{node.typeId}</small>
+                  </span>
+                </button>
+              ))
+            )}
+          </div>
+        )}
+      </div>
+      <TypeFilterControl
+        label="Node types"
+        allLabel="All node types"
+        options={graph.nodeTypes}
+        selectedIds={nodeTypeFilterIds}
+        onChange={setNodeTypeFilterIds}
+      />
+      <TypeFilterControl
+        label="Edge types"
+        allLabel="All edge types"
+        options={graph.edgeTypes}
+        selectedIds={edgeTypeFilterIds}
+        onChange={setEdgeTypeFilterIds}
+      />
+    </div>
+  );
+
   return (
     <main className="flex h-screen flex-col bg-zinc-950 text-zinc-100">
       <header className="flex-none border-b border-zinc-800 bg-zinc-900/80 px-6 py-5">
@@ -467,55 +516,10 @@ export function App() {
         </div>
       </header>
 
-      <section className="flex min-h-0 flex-1 flex-col gap-6 overflow-y-auto px-6 py-6">
+      <section className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto px-2 py-2">
         {error && <p className="rounded-lg border border-violet-500/20 bg-zinc-900 p-3 text-sm text-zinc-200">{error}</p>}
 
-        <Panel className="flex min-h-0 flex-1 flex-col">
-          {filtersOpen && (
-            <div className="mb-3 grid gap-3 lg:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)_minmax(0,1fr)]">
-              <div className="graph-search">
-                <input value={search} onChange={event => setSearch(event.target.value)} placeholder="Search nodes..." />
-                {search.trim() && (
-                  <div className="graph-search__results">
-                    {nodeSearchMatches.length === 0 ? (
-                      <p className="graph-search__empty">No matching nodes.</p>
-                    ) : (
-                      nodeSearchMatches.map(node => (
-                        <button
-                          type="button"
-                          key={node.id}
-                          className={node.id === selectedNode?.id ? "item selected" : "item"}
-                          onClick={() => {
-                            maybeRequestSelection({ nodeId: node.id, edgeId: "" });
-                            setSearch("");
-                          }}
-                        >
-                          <span>
-                            <strong>{node.name}</strong>
-                            <small>{node.typeId}</small>
-                          </span>
-                        </button>
-                      ))
-                    )}
-                  </div>
-                )}
-              </div>
-              <TypeFilterControl
-                label="Node types"
-                allLabel="All node types"
-                options={graph.nodeTypes}
-                selectedIds={nodeTypeFilterIds}
-                onChange={setNodeTypeFilterIds}
-              />
-              <TypeFilterControl
-                label="Edge types"
-                allLabel="All edge types"
-                options={graph.edgeTypes}
-                selectedIds={edgeTypeFilterIds}
-                onChange={setEdgeTypeFilterIds}
-              />
-            </div>
-          )}
+        <div className="flex min-h-0 flex-1 flex-col">
           <GraphMap
             graph={graph}
             selectedNodeId={selectedNode?.id ?? ""}
@@ -527,19 +531,21 @@ export function App() {
             onClearSelection={() => {
               maybeRequestSelection({ nodeId: "", edgeId: "" });
             }}
+            filters={filtersOpen ? renderFilters() : null}
             controls={
               <button
                 type="button"
                 className="bg-zinc-950/95 shadow-lg shadow-black/30 backdrop-blur"
                 onClick={() => setFiltersOpen(current => !current)}
                 aria-expanded={filtersOpen}
+                aria-controls="graph-filter-panel"
                 aria-label={filtersOpen ? "Hide search and filters" : "Show search and filters"}
               >
                 {filtersOpen ? "Hide filters" : "Show filters"}
               </button>
             }
           />
-        </Panel>
+        </div>
 
         <EditorSidebar
           activeTab={activeTab}
