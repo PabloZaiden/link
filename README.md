@@ -20,7 +20,7 @@ Install the latest Linux or macOS binary release:
 curl -fsSL https://raw.githubusercontent.com/pablozaiden/link/main/install.sh | sh
 ```
 
-The installer downloads the latest release for your platform and installs it as `linkserver` in `$HOME/.local/bin`. If that directory is not on your `PATH`, the installer prints the shell profile line to add.
+The installer downloads the latest release for your platform and installs it as `link-cli` in `$HOME/.local/bin`. If that directory is not on your `PATH`, the installer prints the shell profile line to add.
 
 ## Local development
 
@@ -31,23 +31,48 @@ bun run dev
 
 Open the app at the printed server URL, usually `http://localhost:3000`.
 
-To create the default node and edge types for an empty graph, start Link once with `--seed`:
+To create the default node and edge types for an empty graph, run:
 
 ```bash
-bun src/index.ts --seed
+bun src/index.ts seed
 ```
 
 Common checks:
 
 ```bash
-bun src/index.ts --validate
+bun src/index.ts validate
 bun test
 bun run build
 ```
 
+## CLI usage
+
+Running `link-cli` with no arguments shows the available top-level commands:
+
+```bash
+link-cli
+link-cli web
+link-cli validate
+link-cli seed
+link-cli graph
+```
+
+- `web` starts the web UI, HTTP API, realtime endpoint, and MCP endpoint.
+- `validate` validates graph JSON files.
+- `seed` creates the default graph node and edge types when the graph is empty.
+- `graph` exposes the same graph actions as the MCP server for direct CLI use.
+
+Graph CLI action names match MCP tool names exactly. Use `link-cli graph` to list actions and `link-cli graph <action> --help` for action-specific help:
+
+```bash
+link-cli graph get_graph
+link-cli graph search_graph --query ada
+link-cli graph create_node --json '{"name":"Ada Lovelace","typeId":"person"}'
+```
+
 ## Graph storage
 
-The default graph path is `./.data/graph`, but Link does not create `.data` or graph collection directories until a mutation saves data or explicit `--seed` bootstrap data is written:
+The default graph path is `./.data/graph`, but Link does not create `.data` or graph collection directories until a mutation saves data or explicit `seed` bootstrap data is written:
 
 ```text
 .data/
@@ -64,16 +89,16 @@ The default graph path is `./.data/graph`, but Link does not create `.data` or g
       ada-lovelace-works-on-link.json
 ```
 
-If the graph is empty and you want the built-in starter types, run `bun src/index.ts --seed`. Seeding is skipped when any graph JSON records already exist, so it will not backfill defaults into an existing graph.
+If the graph is empty and you want the built-in starter types, run `bun src/index.ts seed` or `link-cli seed`. Seeding is skipped when any graph JSON records already exist, so it will not backfill defaults into an existing graph.
 
 ## Collaborative Link with Git workflow
 
 1. Create a new, emtpy Git repository.
-1. Run Link locally and edit through the UI, HTTP API, or MCP tools. Use `linkserver --seed` first only when you want default types in an empty graph.
+1. Run Link locally and edit through the UI, HTTP API, MCP tools, or CLI graph actions. Use `link-cli seed` first only when you want default types in an empty graph.
 1. Inspect JSON changes under `.data/graph`.
 1. `git add .data/graph && git commit`.
 1. `git pull` and merge or resolve JSON conflicts.
-1. Run `linkserver --validate` to ensure the graph is consistent.
+1. Run `link-cli validate` to ensure the graph is consistent.
 1. `git push`.
 
 ## Configuration
@@ -82,6 +107,7 @@ If the graph is empty and you want the built-in starter types, run `bun src/inde
 | --- | --- | --- |
 | `PORT` / `LINK_PORT` | `3000` | HTTP server port. `LINK_PORT` wins when both are set. |
 | `LINK_DATA_DIR` | `./.data` | Base data directory. Graph JSON is always stored under the fixed `graph/` subdirectory inside it. |
+| `LINK_GRAPH_POLL_INTERVAL_MS` | `2000` | Web server graph polling interval. Set to `0` to disable polling for external graph JSON changes. |
 
 ## HTTP API overview
 
@@ -118,11 +144,11 @@ curl -s -X POST http://localhost:3000/api/nodes \
   -d '{"name":"Ada Lovelace","typeId":"person"}'
 ```
 
-This example assumes the `person` node type already exists, either from `--seed` or from creating that type yourself.
+This example assumes the `person` node type already exists, either from `link-cli seed` or from creating that type yourself.
 
 ## Realtime updates
 
-Connect a WebSocket client to `/api/realtime`. Successful graph mutations broadcast `graph.changed` events. Clients should refetch `/api/graph` after receiving a change event.
+Connect a WebSocket client to `/api/realtime`. Successful in-process graph mutations broadcast `graph.changed` events. The web server also polls graph JSON files and broadcasts `graph.changed` when another process, such as `link-cli graph`, changes the graph. Clients should refetch `/api/graph` after receiving a change event.
 
 ## MCP / agent usage
 
@@ -132,7 +158,7 @@ The `/mcp` endpoint is a standard MCP Streamable HTTP transport powered by `@mod
 http://localhost:3000/mcp
 ```
 
-The server exposes local graph tools through MCP `tools/list` and `tools/call`, including `get_graph`, `search_graph`, `get_node_context`, and type/node/edge mutation tools.
+The server exposes local graph tools through MCP `tools/list` and `tools/call`, including `get_graph`, `search_graph`, `get_node_context`, and type/node/edge mutation tools. The same tool names are available through `link-cli graph <tool_name>` when MCP is not connected.
 
 Agent workflow guidance is packaged as the Agent Skills-compatible skill in `skills/link/SKILL.md`.
 
@@ -153,5 +179,5 @@ docker run --rm -p 3000:3000 -v "$PWD/.data:/data" link
 Use `LINK_DATA_DIR` if you mount the data directory somewhere else inside the container. To seed an empty mounted graph, override the container command explicitly:
 
 ```bash
-docker run --rm -p 3000:3000 -v "$PWD/.data:/data" link bun src/index.ts --seed
+docker run --rm -v "$PWD/.data:/data" link link-cli seed
 ```

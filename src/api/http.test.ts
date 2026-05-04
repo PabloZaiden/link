@@ -40,7 +40,7 @@ async function start() {
   const app = createApp({
     index,
     repository,
-    config: { port: 0, graphPath },
+    config: { port: 0, graphPath, graphPollIntervalMs: 0 },
   });
   server = serve(app);
   return String(server.url).replace(/\/$/, "");

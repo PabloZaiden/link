@@ -16,9 +16,9 @@ const target = targetArg?.split("=")[1] as
 const outfileArg = process.argv.find(arg => arg.startsWith("--outfile="));
 const explicitOutfile = outfileArg?.split("=")[1];
 const tempBinaryPath = target?.startsWith("bun-windows")
-  ? `${tempOutputDir}/linkserver.exe`
-  : `${tempOutputDir}/linkserver`;
-const destPath = explicitOutfile ?? `${outputDir}/${target ? `linkserver-${target.replace("bun-", "")}` : "linkserver"}`;
+  ? `${tempOutputDir}/link-cli.exe`
+  : `${tempOutputDir}/link-cli`;
+const destPath = explicitOutfile ?? `${outputDir}/${target ? `link-cli-${target.replace("bun-", "")}` : "link-cli"}`;
 
 let buildSucceeded = false;
 
