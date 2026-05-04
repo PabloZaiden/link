@@ -1,3 +1,4 @@
+import { createHash } from "crypto";
 import { chmod, mkdtemp, realpath, rename, rm, stat } from "fs/promises";
 import { basename, dirname, join } from "path";
 import { z } from "zod";
@@ -5,6 +6,8 @@ import { z } from "zod";
 const GITHUB_REPOSITORY = "pablozaiden/link";
 const GITHUB_API_BASE_URL = `https://api.github.com/repos/${GITHUB_REPOSITORY}`;
 const CLI_BINARY_NAME = "link-cli";
+const GITHUB_API_VERSION = "2022-11-28";
+const GITHUB_USER_AGENT = "link-cli-updater";
 
 const ReleaseAssetSchema = z.object({
   name: z.string().min(1),
@@ -33,6 +36,8 @@ type ReleaseAsset = {
   version: string;
   assetName: string;
   downloadUrl: string;
+  checksumAssetName: string;
+  checksumDownloadUrl?: string;
 };
 
 export interface CliUpdateDependencies {
@@ -175,6 +180,8 @@ async function fetchRelease(version: string | undefined, dependencies: CliUpdate
   const response = await dependencies.fetchFn(releaseUrl, {
     headers: {
       accept: "application/vnd.github+json",
+      "user-agent": GITHUB_USER_AGENT,
+      "x-github-api-version": GITHUB_API_VERSION,
     },
   });
 
@@ -193,13 +200,17 @@ async function fetchRelease(version: string | undefined, dependencies: CliUpdate
 
 function resolveReleaseAsset(release: GitHubRelease, target: ReleasePlatform): ReleaseAsset {
   const assetName = buildReleaseAssetName(release.tag_name, target);
+  const checksumAssetName = `${assetName}.sha256`;
   const asset = release.assets.find(entry => entry.name === assetName);
   if (!asset) throw new Error(`Release ${release.tag_name} does not include asset ${assetName}.`);
+  const checksumAsset = release.assets.find(entry => entry.name === checksumAssetName);
 
   return {
     version: normalizeReleaseVersion(release.tag_name),
     assetName,
     downloadUrl: asset.browser_download_url,
+    checksumAssetName,
+    checksumDownloadUrl: checksumAsset?.browser_download_url,
   };
 }
 
@@ -209,7 +220,11 @@ async function resolveInstalledBinaryPath(dependencies: CliUpdateDependencies): 
   if (executableName === "bun" || executableName.startsWith("bun-")) {
     throw new Error("link-cli update only works from an installed Link CLI binary. Use install.sh when running from source.");
   }
-  return await dependencies.resolveRealPath(executablePath);
+  const resolvedPath = await dependencies.resolveRealPath(executablePath);
+  if (!(await dependencies.fileExists(resolvedPath))) {
+    throw new Error(`Installed binary does not exist: ${resolvedPath}`);
+  }
+  return resolvedPath;
 }
 
 function formatCheckMessage(currentVersion: string, targetVersion: string): string {
@@ -234,6 +249,50 @@ function toPermissionMessage(path: string, error: unknown): Error {
   return new Error(`Failed to update ${path}: ${String(error)}`);
 }
 
+function parseExpectedSha256(checksumText: string, assetName: string): string {
+  const plainHashes: string[] = [];
+
+  for (const rawLine of checksumText.split(/\r?\n/)) {
+    const line = rawLine.trim();
+    if (!line) continue;
+    const [hash, ...fileParts] = line.split(/\s+/);
+    if (!hash || !/^[0-9a-fA-F]{64}$/.test(hash)) continue;
+
+    const normalizedHash = hash.toLowerCase();
+    const fileName = fileParts.join(" ").replace(/^\*/, "");
+    if (fileName) {
+      if (basename(fileName) === assetName) return normalizedHash;
+      continue;
+    }
+    plainHashes.push(normalizedHash);
+  }
+
+  if (plainHashes.length === 1) {
+    const onlyHash = plainHashes[0];
+    if (onlyHash) return onlyHash;
+  }
+  throw new Error(`Checksum for ${assetName} did not contain a valid SHA-256 entry.`);
+}
+
+async function verifyReleaseAssetChecksum(
+  asset: ReleaseAsset,
+  payload: Uint8Array,
+  dependencies: CliUpdateDependencies,
+): Promise<void> {
+  if (!asset.checksumDownloadUrl) throw new Error(`Release asset ${asset.checksumAssetName} is required to verify ${asset.assetName}.`);
+
+  dependencies.out(`Downloading ${asset.checksumAssetName}...`);
+  const response = await dependencies.fetchFn(asset.checksumDownloadUrl);
+  if (!response.ok) throw new Error(`Failed to download ${asset.checksumAssetName}: GitHub returned ${String(response.status)}.`);
+
+  const expected = parseExpectedSha256(await response.text(), asset.assetName);
+  const actual = createHash("sha256").update(payload).digest("hex");
+  if (actual !== expected) {
+    throw new Error(`Checksum verification failed for ${asset.assetName}: expected ${expected}, got ${actual}.`);
+  }
+  dependencies.out(`Verified checksum for ${asset.assetName}.`);
+}
+
 async function replaceInstalledBinary(asset: ReleaseAsset, dependencies: CliUpdateDependencies): Promise<string> {
   const targetPath = await resolveInstalledBinaryPath(dependencies);
   let tempDirectory: string | undefined;
@@ -248,6 +307,7 @@ async function replaceInstalledBinary(asset: ReleaseAsset, dependencies: CliUpda
     if (!response.ok) throw new Error(`Failed to download ${asset.assetName}: GitHub returned ${String(response.status)}.`);
 
     const payload = new Uint8Array(await response.arrayBuffer());
+    await verifyReleaseAssetChecksum(asset, payload, dependencies);
     await dependencies.writeBinary(tempPath, payload);
     tempCreated = true;
 

@@ -85,6 +85,7 @@ function parseUpdateCommand(args: string[]): Extract<CliCommand, { kind: "update
       const value = args[i + 1];
       if (value === undefined || value.startsWith("--")) usageError("--version requires a value.");
       version = value.trim();
+      if (!version) usageError("--version requires a value.");
       i += 1;
       continue;
     }

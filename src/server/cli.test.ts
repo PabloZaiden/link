@@ -38,6 +38,8 @@ describe("parseCliCommand", () => {
     expect(() => parseCliCommand(["bun", "src/index.ts", "update", "extra"])).toThrow(GraphError);
     expect(() => parseCliCommand(["bun", "src/index.ts", "update", "--missing"])).toThrow(GraphError);
     expect(() => parseCliCommand(["bun", "src/index.ts", "update", "--version"])).toThrow(GraphError);
+    expect(() => parseCliCommand(["bun", "src/index.ts", "update", "--version", "   "])).toThrow(GraphError);
+    expect(() => parseCliCommand(["bun", "src/index.ts", "update", "--version=   "])).toThrow(GraphError);
     expect(() => parseCliCommand(["bun", "src/index.ts", "update", "--check", "--version", "1.2.3"])).toThrow(GraphError);
   });
 

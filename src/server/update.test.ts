@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { createHash } from "crypto";
 import {
   buildReleaseAssetName,
   compareReleaseVersions,
@@ -12,6 +13,7 @@ import {
 type MockUpdateState = {
   outputs: string[];
   fetchedUrls: string[];
+  fetchInits: Array<RequestInit | undefined>;
   writes: Array<{ path: string; content: string }>;
   chmods: Array<{ path: string; mode: number }>;
   renames: Array<{ from: string; to: string }>;
@@ -32,6 +34,11 @@ function binaryResponse(content = "binary"): Response {
   return new Response(content);
 }
 
+function checksumResponse(assetName: string, content = "binary"): Response {
+  const checksum = createHash("sha256").update(content).digest("hex");
+  return new Response(`${checksum}  ${assetName}\n`);
+}
+
 function createDependencies(
   responses: Response[],
   overrides: Partial<CliUpdateDependencies> = {},
@@ -39,6 +46,7 @@ function createDependencies(
   const state: MockUpdateState = {
     outputs: [],
     fetchedUrls: [],
+    fetchInits: [],
     writes: [],
     chmods: [],
     renames: [],
@@ -46,8 +54,9 @@ function createDependencies(
   };
   const queuedResponses = [...responses];
   const dependencies: CliUpdateDependencies = {
-    fetchFn: (async (input: RequestInfo | URL) => {
+    fetchFn: (async (input: RequestInfo | URL, init?: RequestInit) => {
       state.fetchedUrls.push(String(input));
+      state.fetchInits.push(init);
       const response = queuedResponses.shift();
       if (!response) throw new Error(`Unexpected fetch: ${String(input)}`);
       return response;
@@ -114,6 +123,11 @@ describe("runUpdateCommand", () => {
 
     expect(exitCode).toBe(0);
     expect(state.outputs).toContain("Update available: 0.1.0 -> 0.2.0");
+    expect(state.fetchInits[0]?.headers).toEqual({
+      accept: "application/vnd.github+json",
+      "user-agent": "link-cli-updater",
+      "x-github-api-version": "2022-11-28",
+    });
     expect(state.writes).toHaveLength(0);
     expect(state.renames).toHaveLength(0);
   });
@@ -134,9 +148,11 @@ describe("runUpdateCommand", () => {
   });
 
   test("installs an explicit release version", async () => {
+    const assetName = "link-cli-v1.2.3-linux-x64";
     const { dependencies, state } = createDependencies([
-      releaseResponse("v1.2.3", ["link-cli-v1.2.3-linux-x64"]),
+      releaseResponse("v1.2.3", [assetName, `${assetName}.sha256`]),
       binaryResponse("new-binary"),
+      checksumResponse(assetName, "new-binary"),
     ]);
 
     const exitCode = await runUpdateCommand({ checkOnly: false, version: "1.2.3" }, dependencies);
@@ -145,6 +161,7 @@ describe("runUpdateCommand", () => {
     expect(state.fetchedUrls).toEqual([
       "https://api.github.com/repos/pablozaiden/link/releases/tags/v1.2.3",
       "https://downloads.example/link-cli-v1.2.3-linux-x64",
+      "https://downloads.example/link-cli-v1.2.3-linux-x64.sha256",
     ]);
     expect(state.writes).toEqual([
       { path: "/real/.link-update-test/link-cli-v1.2.3-linux-x64", content: "new-binary" },
@@ -196,11 +213,65 @@ describe("runUpdateCommand", () => {
     );
   });
 
+  test("requires and validates checksum assets before replacing the binary", async () => {
+    const assetName = "link-cli-v0.2.0-linux-x64";
+    const missingChecksum = createDependencies([
+      releaseResponse("v0.2.0", [assetName]),
+      binaryResponse("new-binary"),
+    ]);
+    await expect(runUpdateCommand({ checkOnly: false }, missingChecksum.dependencies)).rejects.toThrow(
+      "Release asset link-cli-v0.2.0-linux-x64.sha256 is required",
+    );
+    expect(missingChecksum.state.writes).toHaveLength(0);
+    expect(missingChecksum.state.renames).toHaveLength(0);
+
+    const checksumMismatch = createDependencies([
+      releaseResponse("v0.2.0", [assetName, `${assetName}.sha256`]),
+      binaryResponse("new-binary"),
+      checksumResponse(assetName, "different-binary"),
+    ]);
+    await expect(runUpdateCommand({ checkOnly: false }, checksumMismatch.dependencies)).rejects.toThrow(
+      "Checksum verification failed",
+    );
+    expect(checksumMismatch.state.writes).toHaveLength(0);
+    expect(checksumMismatch.state.renames).toHaveLength(0);
+
+    const checksumWrongFile = createDependencies([
+      releaseResponse("v0.2.0", [assetName, `${assetName}.sha256`]),
+      binaryResponse("new-binary"),
+      checksumResponse("other-binary", "new-binary"),
+    ]);
+    await expect(runUpdateCommand({ checkOnly: false }, checksumWrongFile.dependencies)).rejects.toThrow(
+      "did not contain a valid SHA-256 entry",
+    );
+    expect(checksumWrongFile.state.writes).toHaveLength(0);
+    expect(checksumWrongFile.state.renames).toHaveLength(0);
+  });
+
+  test("validates the resolved executable path before replacing the binary", async () => {
+    const assetName = "link-cli-v0.2.0-linux-x64";
+    const { dependencies } = createDependencies(
+      [
+        releaseResponse("v0.2.0", [assetName, `${assetName}.sha256`]),
+        binaryResponse(),
+        checksumResponse(assetName),
+      ],
+      {
+        fileExists: async () => false,
+      },
+    );
+
+    await expect(runUpdateCommand({ checkOnly: false }, dependencies)).rejects.toThrow(
+      "Installed binary does not exist: /real/link-cli",
+    );
+  });
+
   test("surfaces permission errors with an actionable message", async () => {
     const { dependencies } = createDependencies(
       [
-        releaseResponse("v0.2.0", ["link-cli-v0.2.0-linux-x64"]),
+        releaseResponse("v0.2.0", ["link-cli-v0.2.0-linux-x64", "link-cli-v0.2.0-linux-x64.sha256"]),
         binaryResponse(),
+        checksumResponse("link-cli-v0.2.0-linux-x64"),
       ],
       {
         renameFile: async () => {
