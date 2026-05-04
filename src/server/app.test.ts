@@ -17,7 +17,7 @@ describe("createApp", () => {
   test("does not create graph directories during normal startup", () => {
     const graphPath = tempGraphPath();
     try {
-      createApp({ index, config: { port: 0, graphPath, graphPollIntervalMs: 0 } });
+      createApp({ index, config: { port: 0, graphPath, graphWatchDebounceMs: 0 } });
       expect(existsSync(graphPath)).toBe(false);
     } finally {
       cleanup(graphPath);
@@ -29,7 +29,7 @@ describe("createApp", () => {
 describe("startApp", () => {
   test("starts the app without seeding graph data", () => {
     const graphPath = tempGraphPath();
-    const server = startApp(index, { config: { port: 0, graphPath, graphPollIntervalMs: 0 } });
+    const server = startApp(index, { config: { port: 0, graphPath, graphWatchDebounceMs: 0 } });
     try {
       expect(existsSync(graphPath)).toBe(false);
     } finally {

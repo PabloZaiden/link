@@ -60,11 +60,39 @@ describe("startGraphMonitor", () => {
     };
 
     try {
-      const monitor = startGraphMonitor({ graphPath, realtime, intervalMs: 1000 });
+      const monitor = startGraphMonitor({ graphPath, realtime, watchDebounceMs: 1000 });
       const repository = new JsonGraphRepository(graphPath);
       repository.createNodeType({ name: "Person" });
 
       monitor?.checkNow();
+
+      expect(events).toEqual([{ type: "graph.changed", recordType: "graph", recordId: "graph", operation: "external-change" }]);
+      monitor?.stop();
+    } finally {
+      cleanup(graphPath);
+    }
+  });
+
+  test("broadcasts from filesystem watch when another process changes graph content", async () => {
+    const graphPath = tempGraphPath();
+    const realtime = new RealtimeHub();
+    const events: unknown[] = [];
+    let resolveChange: (() => void) | undefined;
+    const changePromise = new Promise<void>((resolve, reject) => {
+      resolveChange = resolve;
+      setTimeout(() => reject(new Error("Timed out waiting for graph watch event.")), 1000);
+    });
+    realtime.broadcast = event => {
+      events.push(event);
+      resolveChange?.();
+    };
+
+    try {
+      const repository = new JsonGraphRepository(graphPath);
+      const monitor = startGraphMonitor({ graphPath, realtime, watchDebounceMs: 10 });
+      repository.createNodeType({ name: "Project" });
+
+      await changePromise;
 
       expect(events).toEqual([{ type: "graph.changed", recordType: "graph", recordId: "graph", operation: "external-change" }]);
       monitor?.stop();

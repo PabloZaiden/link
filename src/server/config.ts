@@ -4,7 +4,7 @@ import { configError } from "../domain/errors";
 export interface AppConfig {
   port: number;
   graphPath: string;
-  graphPollIntervalMs: number;
+  graphWatchDebounceMs: number;
 }
 
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
@@ -14,10 +14,10 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     throw configError("LINK_PORT or PORT must be an integer between 1 and 65535.", { port: portText });
   }
 
-  const graphPollIntervalText = env.LINK_GRAPH_POLL_INTERVAL_MS ?? "2000";
-  const graphPollIntervalMs = Number(graphPollIntervalText);
-  if (!Number.isInteger(graphPollIntervalMs) || graphPollIntervalMs < 0) {
-    throw configError("LINK_GRAPH_POLL_INTERVAL_MS must be a non-negative integer.", { graphPollIntervalMs: graphPollIntervalText });
+  const graphWatchDebounceText = env.LINK_GRAPH_WATCH_DEBOUNCE_MS ?? "50";
+  const graphWatchDebounceMs = Number(graphWatchDebounceText);
+  if (!Number.isInteger(graphWatchDebounceMs) || graphWatchDebounceMs < 0) {
+    throw configError("LINK_GRAPH_WATCH_DEBOUNCE_MS must be a non-negative integer.", { graphWatchDebounceMs: graphWatchDebounceText });
   }
 
   const dataDir = env.LINK_DATA_DIR ?? path.join(process.cwd(), ".data");
@@ -25,6 +25,6 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
   return {
     port,
     graphPath: path.join(dataDir, "graph"),
-    graphPollIntervalMs,
+    graphWatchDebounceMs,
   };
 }

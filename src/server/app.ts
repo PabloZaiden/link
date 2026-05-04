@@ -42,7 +42,7 @@ export function startApp(index: Response | BunFile | HTMLBundle, options: StartA
   const monitor = startGraphMonitor({
     graphPath: config.graphPath,
     realtime,
-    intervalMs: config.graphPollIntervalMs,
+    watchDebounceMs: config.graphWatchDebounceMs,
   });
   const originalStop = server.stop.bind(server);
   server.stop = ((closeActiveConnections?: boolean) => {

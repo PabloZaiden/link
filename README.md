@@ -107,7 +107,7 @@ If the graph is empty and you want the built-in starter types, run `bun src/inde
 | --- | --- | --- |
 | `PORT` / `LINK_PORT` | `3000` | HTTP server port. `LINK_PORT` wins when both are set. |
 | `LINK_DATA_DIR` | `./.data` | Base data directory. Graph JSON is always stored under the fixed `graph/` subdirectory inside it. |
-| `LINK_GRAPH_POLL_INTERVAL_MS` | `2000` | Web server graph polling interval. Set to `0` to disable polling for external graph JSON changes. |
+| `LINK_GRAPH_WATCH_DEBOUNCE_MS` | `50` | Debounce for filesystem graph change events in web mode. Set to `0` to disable watching for external graph JSON changes. |
 
 ## HTTP API overview
 
@@ -148,7 +148,7 @@ This example assumes the `person` node type already exists, either from `link-cl
 
 ## Realtime updates
 
-Connect a WebSocket client to `/api/realtime`. Successful in-process graph mutations broadcast `graph.changed` events. The web server also polls graph JSON files and broadcasts `graph.changed` when another process, such as `link-cli graph`, changes the graph. Clients should refetch `/api/graph` after receiving a change event.
+Connect a WebSocket client to `/api/realtime`. Successful in-process graph mutations broadcast `graph.changed` events. The web server also watches graph JSON files and broadcasts `graph.changed` when another process, such as `link-cli graph`, changes the graph. Clients should refetch `/api/graph` after receiving a change event.
 
 ## MCP / agent usage
 

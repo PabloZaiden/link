@@ -1,5 +1,5 @@
 import { createHash } from "crypto";
-import { existsSync, readdirSync, statSync } from "fs";
+import { existsSync, readdirSync, statSync, watch, type FSWatcher } from "fs";
 import path from "path";
 import { validateGraphPath } from "../storage/json";
 import type { RealtimeHub } from "../realtime/hub";
@@ -58,12 +58,15 @@ export function fingerprintGraphPath(graphPath: string): string {
 export function startGraphMonitor(deps: {
   graphPath: string;
   realtime: RealtimeHub;
-  intervalMs: number;
+  watchDebounceMs: number;
   onError?: (error: unknown) => void;
 }): GraphMonitor | undefined {
-  if (deps.intervalMs === 0) return undefined;
+  if (deps.watchDebounceMs === 0) return undefined;
 
   let lastFingerprint = fingerprintGraphPath(deps.graphPath);
+  let stopped = false;
+  let debounceTimer: ReturnType<typeof setTimeout> | undefined;
+  const watchers = new Map<string, FSWatcher>();
 
   const checkNow = (): void => {
     const nextFingerprint = fingerprintGraphPath(deps.graphPath);
@@ -73,17 +76,83 @@ export function startGraphMonitor(deps: {
     deps.realtime.broadcast({ type: "graph.changed", recordType: "graph", recordId: "graph", operation: "external-change" });
   };
 
-  const timer = setInterval(() => {
+  const reportError = (error: unknown): void => {
+    deps.onError?.(error);
+    if (deps.onError === undefined) console.error(error);
+  };
+
+  const runCheck = (): void => {
     try {
       checkNow();
     } catch (error) {
-      deps.onError?.(error);
-      if (deps.onError === undefined) console.error(error);
+      reportError(error);
     }
-  }, deps.intervalMs);
+  };
+
+  const scheduleCheck = (): void => {
+    if (stopped) return;
+    if (debounceTimer !== undefined) clearTimeout(debounceTimer);
+    debounceTimer = setTimeout(() => {
+      debounceTimer = undefined;
+      runCheck();
+    }, deps.watchDebounceMs);
+  };
+
+  const watchTargets = (): string[] => [
+    deps.graphPath,
+    ...graphCollectionDirs.map(dirName => path.join(deps.graphPath, dirName)),
+  ];
+
+  const nearestExistingDirectory = (targetPath: string): string | undefined => {
+    let currentPath = targetPath;
+    while (true) {
+      try {
+        if (existsSync(currentPath) && statSync(currentPath).isDirectory()) return currentPath;
+      } catch (error) {
+        reportError(error);
+        return undefined;
+      }
+
+      const parentPath = path.dirname(currentPath);
+      if (parentPath === currentPath) return undefined;
+      currentPath = parentPath;
+    }
+  };
+
+  const refreshWatchers = (): void => {
+    if (stopped) return;
+    const nextWatchRoots = new Set(watchTargets().map(nearestExistingDirectory).filter((watchRoot): watchRoot is string => watchRoot !== undefined));
+
+    for (const [watchRoot, watcher] of watchers) {
+      if (nextWatchRoots.has(watchRoot)) continue;
+      watcher.close();
+      watchers.delete(watchRoot);
+    }
+
+    for (const watchRoot of nextWatchRoots) {
+      if (watchers.has(watchRoot)) continue;
+      try {
+        const watcher = watch(watchRoot, { persistent: false }, () => {
+          refreshWatchers();
+          scheduleCheck();
+        });
+        watcher.on("error", reportError);
+        watchers.set(watchRoot, watcher);
+      } catch (error) {
+        reportError(error);
+      }
+    }
+  };
+
+  refreshWatchers();
 
   return {
-    stop: () => clearInterval(timer),
+    stop: () => {
+      stopped = true;
+      if (debounceTimer !== undefined) clearTimeout(debounceTimer);
+      for (const watcher of watchers.values()) watcher.close();
+      watchers.clear();
+    },
     checkNow,
   };
 }
