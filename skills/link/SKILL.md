@@ -1,12 +1,12 @@
 ---
 name: link
-description: Use Link through its MCP server to inspect, query, and safely update local knowledge graphs of typed nodes, edges, and metadata.
-compatibility: Requires a running Link server with the MCP Streamable HTTP endpoint available at /mcp, usually at http://localhost:3000/mcp.
+description: Use Link through MCP when connected, or through link-cli when MCP is unavailable, to inspect, query, and safely update local knowledge graphs of typed nodes, edges, and metadata.
+compatibility: Prefer a running Link MCP Streamable HTTP endpoint at /mcp, usually http://localhost:3000/mcp. If MCP is unavailable, use the link-cli binary against the same local graph data.
 ---
 
 # Link
 
-Use this skill when an agent needs to interact with a Link knowledge graph through the standard MCP server or the deterministic HTTP API.
+Use this skill when an agent needs to interact with a Link knowledge graph through the standard MCP server. If the MCP server connection is unavailable, use the deterministic `link-cli graph` fallback.
 
 ## Required workflow
 
@@ -17,6 +17,13 @@ Use this skill when an agent needs to interact with a Link knowledge graph throu
 1. Ask for confirmation before calling mutation tools.
 1. After a successful mutation, reload the graph and summarize the changed records.
 1. If validation fails because of a broken reference or merge conflict, report the exact file path and ask the user to resolve the Git conflict or choose the intended graph relationship.
+
+## Tool selection
+
+1. If an MCP server connection is available, use MCP tools directly.
+1. If MCP is not connected or unavailable, use `link-cli graph <tool_name>` with the same canonical MCP tool names.
+1. For full input parity in CLI mode, pass the MCP-compatible input object with `--json`.
+1. CLI graph results are JSON on stdout; parse that JSON before reasoning about the graph.
 
 ## Tool categories
 
@@ -30,6 +37,19 @@ Use this skill when an agent needs to interact with a Link knowledge graph throu
 
 - Connect MCP clients to the Streamable HTTP endpoint. By default, it should be at `http://localhost:3000/mcp`.
 - Discover tools with standard MCP `tools/list`.
+
+## CLI fallback
+
+Use the CLI only when MCP is unavailable:
+
+```bash
+link-cli graph
+link-cli graph get_graph
+link-cli graph search_graph --query "Ada"
+link-cli graph create_node --json '{"name":"Ada Lovelace","typeId":"person"}'
+```
+
+Run `link-cli graph <tool_name> --help` to inspect the arguments for one tool. Use `link-cli validate` to validate graph JSON and `link-cli seed` to create default types when the graph is empty.
 
 ## Safety rules
 

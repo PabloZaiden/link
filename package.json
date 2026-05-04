@@ -4,8 +4,8 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "bun --hot src/index.ts",
-    "start": "NODE_ENV=production bun src/index.ts",
+    "dev": "bun --hot src/index.ts web",
+    "start": "NODE_ENV=production bun src/index.ts web",
     "build": "bun run typecheck && bun run build.ts",
     "build:binary": "bun run build-binary.ts",
     "typecheck": "bunx tsc -p tsconfig.json --noEmit",
