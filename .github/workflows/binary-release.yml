@@ -11,6 +11,7 @@ jobs:
     permissions:
       contents: write
     with:
+      update_package_version: true
       prebuild_command: bun run build
       binaries: |
         [
