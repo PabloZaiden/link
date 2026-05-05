@@ -17,10 +17,10 @@ Link is a tool to track relationships between entities in an agent-friendly way.
 Install the latest Linux or macOS binary release:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/pablozaiden/link/main/install.sh | sh
+curl -fsSL https://raw.githubusercontent.com/pablozaiden/installer/v0.0.2/install.sh | sh -s -- pablozaiden/link
 ```
 
-The installer downloads the latest release for your platform and installs it as `link-cli` in `$HOME/.local/bin`. If that directory is not on your `PATH`, the installer prints the shell profile line to add.
+The shared installer reads Link's installer manifest, downloads the latest release for your platform, verifies its checksum, and installs it as `link-cli` in `$HOME/.local/bin`. If that directory is not on your `PATH`, the installer prints the shell profile line to add.
 
 Installed binaries can check for or install release updates:
 

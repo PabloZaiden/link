@@ -1,7 +1,6 @@
 import { GraphError } from "../domain/errors";
 import { callGraphTool } from "../graph/tools";
 import { JsonGraphRepository, validateGraphPath } from "../storage/json";
-import { LINK_VERSION } from "../version";
 import { loadConfig } from "./config";
 import { runUpdateCommand } from "./update";
 import {
@@ -33,7 +32,7 @@ export async function runCliCommand(command: CliCommand): Promise<number | undef
       case "seed":
         return runSeedCommand();
       case "update":
-        return await runUpdateCommand(command, { currentVersion: LINK_VERSION });
+        return await runUpdateCommand(command);
       case "graph-help":
         console.log(formatGraphHelp());
         return 0;

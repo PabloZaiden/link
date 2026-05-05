@@ -1,0 +1,20 @@
+{
+  "schemaVersion": 1,
+  "repo": "pablozaiden/link",
+  "installDir": "$HOME/.local/bin",
+  "binaries": [
+    {
+      "name": "link-cli",
+      "assetPrefix": "link-cli",
+      "postInstallMessage": "Run 'link-cli web' to start Link."
+    }
+  ],
+  "checksums": {
+    "required": true,
+    "extension": ".sha256"
+  },
+  "platforms": {
+    "linux": ["x64", "arm64"],
+    "darwin": ["x64", "arm64"]
+  }
+}
