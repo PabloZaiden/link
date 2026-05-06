@@ -17,7 +17,7 @@ Link is a tool to track relationships between entities in an agent-friendly way.
 Install the latest Linux or macOS binary release:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/pablozaiden/installer/v0.0.2/install.sh | sh -s -- pablozaiden/link
+curl -fsSL https://raw.githubusercontent.com/pablozaiden/installer/main/install.sh | sh -s -- pablozaiden/link
 ```
 
 The installer downloads the latest release for your platform and installs it as `link-cli` in `$HOME/.local/bin`. If that directory is not on your `PATH`, the installer prints the shell profile line to add.
